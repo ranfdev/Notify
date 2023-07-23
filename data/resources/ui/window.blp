@@ -1,0 +1,79 @@
+using Gtk 4.0;
+using Adw 1;
+
+menu primary_menu {
+  section {
+    item {
+      label: _("_Preferences");
+      action: "app.preferences";
+    }
+
+    item {
+      label: _("_Keyboard Shortcuts");
+      action: "win.show-help-overlay";
+    }
+
+    item {
+      label: _("_About Notify");
+      action: "app.about";
+    }
+  }
+}
+
+template $ExampleApplicationWindow : Adw.ApplicationWindow {
+  width-request: 240;
+  height-request: 480;
+  Adw.Breakpoint {
+    condition ("max-width: 400sp")
+    setters {
+      split_view.collapsed: true;
+      show_hello_btn.visible: true;
+    }
+  }
+  Adw.NavigationSplitView split_view {
+    sidebar: Adw.NavigationPage {
+      title: "Sidebar";
+      child: Adw.ToolbarView {
+        [top]
+        Adw.HeaderBar {
+          [end]
+          MenuButton appmenu_button {
+            icon-name: "open-menu-symbolic";
+            menu-model: primary_menu;
+            primary: true;
+            tooltip-text: _("Main Menu");
+          }
+        }
+
+        content: Adw.StatusPage {
+          title: "Sidebar";
+          child: Gtk.Button show_hello_btn {
+            label: "Show Hello Page";
+            visible: false;
+            styles [
+              "pill"
+            ]
+            action-name: "navigation.push";
+            action-target: "'hello'";
+          };
+        };
+      };
+    };
+    content: Adw.NavigationPage {
+      title: "Hello Page";
+      tag: "hello";
+      child: Adw.ToolbarView {
+        [top]
+        Adw.HeaderBar headerbar {
+          // this will have a title label inherited from the Adw.NavigationPage
+        }
+
+        content: Adw.StatusPage {
+          title: "Hello World!";
+          description: "Hello to everyone!";
+        };
+      };
+    };
+  }
+}
+
