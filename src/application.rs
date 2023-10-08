@@ -1,6 +1,8 @@
+use std::path::Path;
+
 use adw::subclass::prelude::*;
 use capnp_rpc::{rpc_twoparty_capnp, twoparty, RpcSystem};
-use futures::{AsyncRead, AsyncReadExt, AsyncWrite};
+use futures::AsyncReadExt;
 use gettextrs::gettext;
 use gio::SocketClient;
 use gio::UnixSocketAddress;
@@ -11,9 +13,6 @@ use tracing::{debug, info};
 
 use crate::config::{APP_ID, PKGDATADIR, PROFILE, VERSION};
 use crate::widgets::*;
-
-trait RW: AsyncRead + AsyncWrite {}
-impl<T: AsyncRead + AsyncWrite> RW for T {}
 
 mod imp {
     use std::cell::RefCell;
@@ -184,7 +183,8 @@ impl NotifyApplication {
     fn ensure_rpc_running(&self, socket_path: &Path) {
         let dbpath = glib::user_data_dir().join("com.ranfdev.Notify.sqlite");
         info!(database_path = %dbpath.display());
-        ntfy_daemon::system_client::start(socket.to_owned(), dbpath.to_str().unwrap()).unwrap();
+        ntfy_daemon::system_client::start(socket_path.to_owned(), dbpath.to_str().unwrap())
+            .unwrap();
         self.imp().hold_guard.set(self.hold()).unwrap();
     }
 

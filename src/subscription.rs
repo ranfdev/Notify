@@ -108,13 +108,7 @@ mod imp {
     }
 
     #[glib::derived_properties]
-    impl ObjectImpl for Subscription {
-        fn signals() -> &'static [Signal] {
-            static SIGNALS: Lazy<Vec<Signal>> =
-                Lazy::new(|| vec![Signal::builder("awarded").build()]);
-            SIGNALS.as_ref()
-        }
-    }
+    impl ObjectImpl for Subscription {}
 
     #[glib::object_subclass]
     impl ObjectSubclass for Subscription {
