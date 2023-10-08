@@ -4,32 +4,28 @@
   <id>@app-id@</id>
   <metadata_license>CC0</metadata_license>
   <!-- Insert your license of choice here -->
-  <!-- <project_license>MIT</project_license> -->
+  <project_license>GPL-3.0-or-later</project_license>
   <name>Notify</name>
-  <summary>Write a GTK + Rust application</summary>
+  <summary>Receive notifications from ntfy.sh.</summary>
   <description>
-    <p>A boilerplate template for GTK + Rust. It uses Meson as a build system and has flatpak support by default.</p>
+    <p>Versatile GTK4 client designed to seamlessly interface with the ntfy.sh notification service</p>
   </description>
   <screenshots>
     <screenshot type="default">
-      <image>https://gitlab.gnome.org/bilelmoussaoui/notify/raw/master/data/resources/screenshots/screenshot1.png</image>
-      <caption>Main window</caption>
+      <image>https://raw.githubusercontent.com/ranfdev/Notify/main/data/screenshots/1.png</image>
+      <caption>Main window, welcome screen</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/ranfdev/Notify/main/data/screenshots/2.png</image>
+      <caption>Main window, subscription view</caption>
     </screenshot>
   </screenshots>
-  <url type="homepage">https://gitlab.gnome.org/bilelmoussaoui/notify</url>
-  <url type="bugtracker">https://gitlab.gnome.org/bilelmoussaoui/notify/issues</url>
+  <url type="homepage">https://github.com/ranfdev/Notify</url>
+  <url type="bugtracker">https://github.com/ranfdev/Notify/issues</url>
   <content_rating type="oars-1.0" />
   <releases>
-    <release version="0.1.0" date="2019-07-11" />
+    <release version="0.1.0" date="2023-10-13" />
   </releases>
-  <kudos>
-     <!--
-       GNOME Software kudos:
-       https://gitlab.gnome.org/GNOME/gnome-software/-/blob/main/doc/kudos.md
-     -->
-     <kudo>ModernToolkit</kudo>
-     <kudo>HiDpiIcon</kudo>
-  </kudos>
   <developer_name>ranfdev</developer_name>
   <update_contact>ranfdev@gmail.com</update_contact>
   <translation type="gettext">@gettext-package@</translation>

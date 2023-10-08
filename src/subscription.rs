@@ -4,9 +4,7 @@ use std::rc::Rc;
 use adw::prelude::*;
 use capnp::capability::Promise;
 use capnp_rpc::pry;
-use glib::once_cell::sync::Lazy;
 use glib::subclass::prelude::*;
-use glib::subclass::Signal;
 use glib::Properties;
 use gtk::{gio, glib};
 use ntfy_daemon::models;
@@ -108,13 +106,7 @@ mod imp {
     }
 
     #[glib::derived_properties]
-    impl ObjectImpl for Subscription {
-        fn signals() -> &'static [Signal] {
-            static SIGNALS: Lazy<Vec<Signal>> =
-                Lazy::new(|| vec![Signal::builder("awarded").build()]);
-            SIGNALS.as_ref()
-        }
-    }
+    impl ObjectImpl for Subscription {}
 
     #[glib::object_subclass]
     impl ObjectSubclass for Subscription {

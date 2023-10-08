@@ -1,7 +1,7 @@
 {
     "id": "com.ranfdev.Notify.Devel",
     "runtime": "org.gnome.Platform",
-    "runtime-version": "master",
+    "runtime-version": "45",
     "sdk": "org.gnome.Sdk",
     "sdk-extensions": [
         "org.freedesktop.Sdk.Extension.rust-stable",
@@ -13,7 +13,6 @@
         "--share=network",
         "--socket=fallback-x11",
         "--socket=wayland",
-        "--socket=session-bus",
         "--device=dri",
         "--env=RUST_LOG=notify=debug,ntfy_daemon=debug",
         "--env=G_MESSAGES_DEBUG=none",
