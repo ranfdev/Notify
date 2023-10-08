@@ -1,54 +1,51 @@
-use gettextrs::gettext;
-use tracing::{debug, info};
-
 use adw::subclass::prelude::*;
+use capnp_rpc::{rpc_twoparty_capnp, twoparty, RpcSystem};
+use futures::{AsyncRead, AsyncReadExt, AsyncWrite};
+use gettextrs::gettext;
+use gio::SocketClient;
+use gio::UnixSocketAddress;
 use gtk::prelude::*;
 use gtk::{gdk, gio, glib};
+use ntfy_daemon::ntfy_capnp::system_notifier;
+use tracing::{debug, info};
 
 use crate::config::{APP_ID, PKGDATADIR, PROFILE, VERSION};
-use crate::window::ExampleApplicationWindow;
+use crate::widgets::*;
+
+trait RW: AsyncRead + AsyncWrite {}
+impl<T: AsyncRead + AsyncWrite> RW for T {}
 
 mod imp {
-    use super::*;
+    use std::cell::RefCell;
+
     use glib::WeakRef;
     use once_cell::sync::OnceCell;
 
-    #[derive(Debug, Default)]
-    pub struct ExampleApplication {
-        pub window: OnceCell<WeakRef<ExampleApplicationWindow>>,
+    use super::*;
+
+    #[derive(Default)]
+    pub struct NotifyApplication {
+        pub window: RefCell<WeakRef<NotifyWindow>>,
+        pub hold_guard: OnceCell<gio::ApplicationHoldGuard>,
     }
 
     #[glib::object_subclass]
-    impl ObjectSubclass for ExampleApplication {
-        const NAME: &'static str = "ExampleApplication";
-        type Type = super::ExampleApplication;
+    impl ObjectSubclass for NotifyApplication {
+        const NAME: &'static str = "NotifyApplication";
+        type Type = super::NotifyApplication;
         type ParentType = adw::Application;
     }
 
-    impl ObjectImpl for ExampleApplication {}
+    impl ObjectImpl for NotifyApplication {}
 
-    impl ApplicationImpl for ExampleApplication {
+    impl ApplicationImpl for NotifyApplication {
         fn activate(&self) {
-            debug!("AdwApplication<ExampleApplication>::activate");
+            debug!("AdwApplication<NotifyApplication>::activate");
             self.parent_activate();
-            let app = self.obj();
-
-            if let Some(window) = self.window.get() {
-                let window = window.upgrade().unwrap();
-                window.present();
-                return;
-            }
-
-            let window = ExampleApplicationWindow::new(&app);
-            self.window
-                .set(window.downgrade())
-                .expect("Window already set.");
-
-            app.main_window().present();
         }
 
         fn startup(&self) {
-            debug!("AdwApplication<ExampleApplication>::startup");
+            debug!("AdwApplication<NotifyApplication>::startup");
             self.parent_startup();
             let app = self.obj();
 
@@ -59,21 +56,56 @@ mod imp {
             app.setup_gactions();
             app.setup_accels();
         }
+        fn command_line(&self, command_line: &gio::ApplicationCommandLine) -> glib::ExitCode {
+            let socket_path = glib::user_data_dir().join("com.ranfdev.Notify.socket");
+
+            debug!("AdwApplication<NotifyApplication>::command_line");
+            let arguments = command_line.arguments();
+            let is_daemon = arguments.get(1).map(|x| x.to_str()) == Some(Some("--daemon"));
+            let app = self.obj();
+
+            if self.hold_guard.get().is_none() {
+                self.obj().ensure_rpc_running(&socket_path);
+            }
+
+            glib::MainContext::default().spawn_local(async move {
+                super::NotifyApplication::run_in_background().await.unwrap();
+            });
+
+            if is_daemon {
+                return glib::ExitCode::SUCCESS;
+            }
+
+            {
+                let w = self.window.borrow();
+                if let Some(window) = w.upgrade() {
+                    if window.is_visible() {
+                        window.present();
+                        return glib::ExitCode::SUCCESS;
+                    }
+                }
+            }
+
+            app.build_window(&socket_path);
+            app.main_window().present();
+
+            glib::ExitCode::SUCCESS
+        }
     }
 
-    impl GtkApplicationImpl for ExampleApplication {}
-    impl AdwApplicationImpl for ExampleApplication {}
+    impl GtkApplicationImpl for NotifyApplication {}
+    impl AdwApplicationImpl for NotifyApplication {}
 }
 
 glib::wrapper! {
-    pub struct ExampleApplication(ObjectSubclass<imp::ExampleApplication>)
+    pub struct NotifyApplication(ObjectSubclass<imp::NotifyApplication>)
         @extends gio::Application, gtk::Application,
         @implements gio::ActionMap, gio::ActionGroup;
 }
 
-impl ExampleApplication {
-    fn main_window(&self) -> ExampleApplicationWindow {
-        self.imp().window.get().unwrap().upgrade().unwrap()
+impl NotifyApplication {
+    fn main_window(&self) -> NotifyWindow {
+        self.imp().window.borrow().upgrade().unwrap()
     }
 
     fn setup_gactions(&self) {
@@ -105,7 +137,7 @@ impl ExampleApplication {
         let provider = gtk::CssProvider::new();
         provider.load_from_resource("/com/ranfdev/Notify/style.css");
         if let Some(display) = gdk::Display::default() {
-            gtk::StyleContext::add_provider_for_display(
+            gtk::style_context_add_provider_for_display(
                 &display,
                 &provider,
                 gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
@@ -117,10 +149,7 @@ impl ExampleApplication {
         let dialog = adw::AboutWindow::builder()
             .application_icon(APP_ID)
             .application_name("Notify")
-            // Insert your license of choice here
-            // .license_type(gtk::License::MitX11)
-            // Insert your website here
-            // .website("https://gitlab.gnome.org/bilelmoussaoui/notify/")
+            .license_type(gtk::License::Gpl30)
             .version(VERSION)
             .transient_for(&self.main_window())
             .translator_credits(gettext("translator-credits"))
@@ -133,18 +162,67 @@ impl ExampleApplication {
     }
 
     pub fn run(&self) -> glib::ExitCode {
-        info!("Notify ({})", APP_ID);
-        info!("Version: {} ({})", VERSION, PROFILE);
-        info!("Datadir: {}", PKGDATADIR);
+        info!(app_id = %APP_ID, version = %VERSION, profile = %PROFILE, datadir = %PKGDATADIR, "running");
 
         ApplicationExtManual::run(self)
     }
+    async fn run_in_background() -> ashpd::Result<()> {
+        let response = ashpd::desktop::background::Background::request()
+            .reason("Listen for coming notifications")
+            .auto_start(true)
+            .command(&["notify", "--daemon"])
+            .dbus_activatable(false)
+            .send()
+            .await?
+            .response()?;
+
+        info!(auto_start = %response.auto_start(), run_in_background = %response.run_in_background());
+
+        Ok(())
+    }
+
+    fn ensure_rpc_running(&self, socket_path: &Path) {
+        let dbpath = glib::user_data_dir().join("com.ranfdev.Notify.sqlite");
+        info!(database_path = %dbpath.display());
+        ntfy_daemon::system_client::start(socket.to_owned(), dbpath.to_str().unwrap()).unwrap();
+        self.imp().hold_guard.set(self.hold()).unwrap();
+    }
+
+    fn build_window(&self, socket_path: &Path) {
+        let address = UnixSocketAddress::new(socket_path);
+        let client = SocketClient::new();
+        let connection =
+            SocketClientExt::connect(&client, &address, gio::Cancellable::NONE).unwrap();
+
+        let rw = connection.into_async_read_write().unwrap();
+        let (reader, writer) = rw.split();
+
+        let rpc_network = Box::new(twoparty::VatNetwork::new(
+            reader,
+            writer,
+            rpc_twoparty_capnp::Side::Client,
+            Default::default(),
+        ));
+        let mut rpc_system = RpcSystem::new(rpc_network, None);
+        let client: system_notifier::Client =
+            rpc_system.bootstrap(rpc_twoparty_capnp::Side::Server);
+
+        glib::MainContext::default().spawn_local(async move {
+            debug!("rpc_system started");
+            rpc_system.await.unwrap();
+            debug!("rpc_system stopped");
+        });
+
+        let window = NotifyWindow::new(self, client);
+        *self.imp().window.borrow_mut() = window.downgrade();
+    }
 }
 
-impl Default for ExampleApplication {
+impl Default for NotifyApplication {
     fn default() -> Self {
         glib::Object::builder()
             .property("application-id", APP_ID)
+            .property("flags", gio::ApplicationFlags::HANDLES_COMMAND_LINE)
             .property("resource-base-path", "/com/ranfdev/Notify/")
             .build()
     }

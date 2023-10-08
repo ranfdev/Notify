@@ -20,60 +20,126 @@ menu primary_menu {
   }
 }
 
-template $ExampleApplicationWindow : Adw.ApplicationWindow {
-  width-request: 240;
-  height-request: 480;
-  Adw.Breakpoint {
-    condition ("max-width: 400sp")
-    setters {
-      split_view.collapsed: true;
-      show_hello_btn.visible: true;
+menu subscription_menu {
+  section {
+    item {
+      label: _("_Subscription Info");
+      action: "win.show-subscription-info";
     }
   }
-  Adw.NavigationSplitView split_view {
-    sidebar: Adw.NavigationPage {
-      title: "Sidebar";
-      child: Adw.ToolbarView {
-        [top]
-        Adw.HeaderBar {
-          [end]
-          MenuButton appmenu_button {
-            icon-name: "open-menu-symbolic";
-            menu-model: primary_menu;
-            primary: true;
-            tooltip-text: _("Main Menu");
+  section {
+    item {
+      label: _("_Clear all notifications");
+      action: "win.clear-notifications";
+    }
+
+    item {
+      label: _("_Unsubscribe");
+      action: "win.unsubscribe";
+    }
+  }
+}
+
+template $NotifyWindow : Adw.ApplicationWindow {
+  width-request: 240;
+  height-request: 360;
+  Adw.Breakpoint {
+    condition ("max-width: 640sp")
+    setters {
+      navigation_split_view.collapsed: true;
+    }
+  }
+  Adw.ToastOverlay toast_overlay {
+    Adw.NavigationSplitView navigation_split_view {
+      sidebar: Adw.NavigationPage {
+        title: "Topics";
+        child: Adw.ToolbarView {
+          [top]
+          Adw.HeaderBar {
+            [start]
+            Button {
+              icon-name: "list-add-symbolic";
+              clicked => $show_add_topic() swapped;
+            }
+            [end]
+            MenuButton appmenu_button {
+              icon-name: "open-menu-symbolic";
+              menu-model: primary_menu;
+              primary: true;
+              tooltip-text: _("Main Menu");
+            }
+          }
+
+          Gtk.Stack stack {
+            Adw.StatusPage welcome_view {
+              title: "Notify";
+              description: "Subscribe to one topic and start listening for notifications";
+              child: Gtk.Button {
+                label: "Subscribe To Topic";
+                clicked => $show_add_topic() swapped;
+                halign: center;
+                styles [
+                  "suggested-action",
+                  "pill"
+                ]
+              };
+            }
+            ScrolledWindow list_view {
+              propagate-natural-height: true;
+              ListBox subscription_list {
+                styles [
+                  "navigation-sidebar"
+                ]
+              }
+            }
+          }
+        };
+      };
+      content: Adw.NavigationPage {
+        title: "Notifications";
+        Adw.ToolbarView subscription_view {
+          [top]
+          Adw.HeaderBar headerbar {
+            [end]
+            MenuButton subscription_menu_btn {
+              icon-name: "view-more-symbolic";
+              menu-model: subscription_menu;
+              tooltip-text: _("Subscription Menu");
+            }
+          }
+          [top]
+          Adw.Banner banner {
+            title: "Reconnecting...";
+          }
+
+          content: ScrolledWindow message_scroll {
+            propagate-natural-height: true;
+            vexpand: true;
+            Adw.Clamp {
+              ListBox message_list {
+                selection-mode: none;
+                show-separators: true;
+                styles [
+                  "background"
+                ]
+              }
+            }
+          };
+          [bottom]
+          Adw.Bin {
+            margin-top: 8;
+            margin-bottom: 8;
+            margin-start: 8;
+            margin-end: 8;
+            Adw.Clamp {
+              Entry entry {
+                placeholder-text: "Message...";
+              }
+            }
           }
         }
-
-        content: Adw.StatusPage {
-          title: "Sidebar";
-          child: Gtk.Button show_hello_btn {
-            label: "Show Hello Page";
-            visible: false;
-            styles [
-              "pill"
-            ]
-            action-name: "navigation.push";
-            action-target: "'hello'";
-          };
-        };
       };
-    };
-    content: Adw.NavigationPage {
-      title: "Hello Page";
-      tag: "hello";
-      child: Adw.ToolbarView {
-        [top]
-        Adw.HeaderBar headerbar {
-          // this will have a title label inherited from the Adw.NavigationPage
-        }
-
-        content: Adw.StatusPage {
-          title: "Hello World!";
-          description: "Hello to everyone!";
-        };
-      };
-    };
+    }
   }
 }
 

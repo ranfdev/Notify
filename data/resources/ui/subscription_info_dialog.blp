@@ -1,0 +1,50 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $SubscriptionInfoDialog : Adw.Window {
+  modal: true;
+  title: "Subscription Info";
+  width-request: 240;
+  Adw.ToolbarView {
+    [top]
+    Adw.HeaderBar {}
+    Adw.Clamp {
+      Gtk.Box {
+        orientation: vertical;
+        spacing: 8;
+        margin-top: 8;
+        margin-bottom: 8;
+        margin-start: 8;
+        margin-end: 8;
+        Gtk.ListBox {
+          Adw.EntryRow display_name_entry {
+            title: "Display Name";
+          }
+          Adw.ActionRow {
+            title: "Topic";
+            subtitle-selectable: true;
+            subtitle: bind (template.subscription as <$TopicSubscription>).topic as <string>;
+            styles [
+              "property"
+            ]
+          }
+          Adw.ActionRow {
+            title: "Server";
+            subtitle: bind (template.subscription as <$TopicSubscription>).server as <string>;
+            subtitle-selectable: true;
+            styles [
+              "property"
+            ]
+          }
+          Adw.SwitchRow muted_switch_row {
+            title: "Muted";
+          }
+
+          styles [
+            "boxed-list"
+          ]
+        }
+      }
+    }
+  }
+}

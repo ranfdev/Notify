@@ -4,6 +4,11 @@
     <!-- see https://gtk-rs.org/gtk4-rs/git/docs/gtk4/struct.Application.html#automatic-resources -->
     <file compressed="true" preprocess="xml-stripblanks" alias="gtk/help-overlay.ui">ui/shortcuts.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/window.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">ui/subscription_info_dialog.ui</file>
     <file compressed="true">style.css</file>
+
+  </gresource>
+  <gresource prefix="/com/ranfdev/Notify/icons/16x16/status/">
+    <file preprocess="xml-stripblanks" alias="dice3-symbolic.svg">../icons/dice3-symbolic.svg</file>
   </gresource>
 </gresources>

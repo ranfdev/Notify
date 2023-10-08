@@ -1,12 +1,14 @@
 mod application;
 #[rustfmt::skip]
 mod config;
-mod window;
+mod async_utils;
+mod subscription;
+pub mod widgets;
 
 use gettextrs::{gettext, LocaleCategory};
 use gtk::{gio, glib};
 
-use self::application::ExampleApplication;
+use self::application::NotifyApplication;
 use self::config::{GETTEXT_PACKAGE, LOCALEDIR, RESOURCES_FILE};
 
 fn main() -> glib::ExitCode {
@@ -23,6 +25,6 @@ fn main() -> glib::ExitCode {
     let res = gio::Resource::load(RESOURCES_FILE).expect("Could not load gresource file");
     gio::resources_register(&res);
 
-    let app = ExampleApplication::default();
+    let app = NotifyApplication::default();
     app.run()
 }

@@ -1,0 +1,31 @@
+[package]
+name = "ntfy-daemon"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+
+[build-dependencies]
+capnpc = "0.17.2"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+capnp = "0.17.2"
+capnp-rpc = "0.17.0"
+futures = "0.3.0"
+tokio = { version = "1.0.0", features = ["net", "rt", "macros", "parking_lot"]}
+tokio-util = { version = "0.7.4", features = ["compat", "io"] }
+clap = { version = "4.3.11", features = ["derive"] }
+anyhow = "1.0.71"
+tokio-stream = { version = "0.1.14", features = ["io-util", "time"] }
+rusqlite = "0.29.0"
+rand = "0.8.5"
+reqwest = { version = "0.11.18", features = ["stream", "rustls-tls"]}
+url = "2.4.0"
+ashpd = "0.6.0"
+generational-arena = "0.2.9"
+tracing = "0.1.37"
+thiserror = "1.0.49"
+regex = "1.9.6"

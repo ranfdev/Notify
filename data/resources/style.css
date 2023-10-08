@@ -2,3 +2,30 @@
   font-size: 36px;
   font-weight: bold;
 }
+
+.chip {
+  min-height: 16px;
+  min-width: 16px;
+  padding: 3px 5px;
+  color: @theme_fg_color;
+  border-radius: 8px;
+}
+.chip--warning {
+  background: alpha(@yellow_2, 0.2);
+}
+.chip--info {
+  color: @blue_5;
+  background: alpha(@blue_2, 0.2);
+}
+.chip--degraded {
+  color: @orange_5;
+  background: alpha(@orange_2, 0.2);
+}
+
+.chip--danger {
+  background: alpha(@red_2, 0.2);
+}
+
+.chip--small {
+  font-size: 0.8rem;
+}
