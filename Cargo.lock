@@ -1655,6 +1655,7 @@ dependencies = [
  "ntfy-daemon",
  "once_cell",
  "rand",
+ "relm4-macros",
  "serde",
  "serde_json",
  "tracing",
@@ -2050,6 +2051,17 @@ name = "regex-syntax"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08c74e62047bb2de4ff487b251e4a92e24f48745648451635cec7d591162d9f"
+
+[[package]]
+name = "relm4-macros"
+version = "0.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9340e2553c0a184a80a0bfa1dcf73c47f3d48933aa6be90724b202f9fbd24735"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.38",
+]
 
 [[package]]
 name = "reqwest"

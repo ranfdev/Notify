@@ -1,20 +1,18 @@
+use std::cell::RefCell;
+
 use adw::prelude::*;
 use adw::subclass::prelude::*;
 use glib::once_cell::sync::Lazy;
 use glib::subclass::Signal;
-use glib::Properties;
 use gtk::gio;
 use gtk::glib;
 
 mod imp {
     pub use super::*;
-    #[derive(Debug, Default, Properties)]
-    #[properties(wrapper_type = super::AddSubscriptionDialog)]
+    #[derive(Debug, Default)]
     pub struct AddSubscriptionDialog {
-        #[property(name = "topic", get = |imp: &Self| imp.topic_entry.text(), type = glib::GString)]
-        pub topic_entry: adw::EntryRow,
-        #[property(name = "server", get = |imp: &Self| imp.server_entry.text(), type = glib::GString)]
-        pub server_entry: adw::EntryRow,
+        pub topic_entry: RefCell<adw::EntryRow>,
+        pub server_entry: RefCell<adw::EntryRow>,
     }
 
     #[glib::object_subclass]
@@ -36,7 +34,7 @@ mod imp {
             });
         }
     }
-    #[glib::derived_properties]
+
     impl ObjectImpl for AddSubscriptionDialog {
         fn signals() -> &'static [Signal] {
             static SIGNALS: Lazy<Vec<Signal>> =
@@ -72,107 +70,80 @@ impl AddSubscriptionDialog {
         obj.set_modal(true);
         obj.set_default_width(360);
 
-        let toolbar_view = adw::ToolbarView::new();
-        toolbar_view.add_top_bar(&adw::HeaderBar::new());
+        relm4_macros::view! {
+            toolbar_view = adw::ToolbarView {
+                add_top_bar: &adw::HeaderBar::new(),
+                #[wrap(Some)]
+                set_content = &adw::Clamp {
+                    #[wrap(Some)]
+                    set_child = &gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_spacing: 12,
+                        set_margin_end: 12,
+                        set_margin_start: 12,
+                        set_margin_top: 12,
+                        set_margin_bottom: 12,
+                        append = &gtk::Label {
+                            add_css_class: "dim-label",
+                            set_label: "Topics may not be password-protected, so choose a name that's not easy to guess. \
+                                Once subscribed, you can PUT/POST notifications.",
+                            set_wrap: true,
+                            set_xalign: 0.0,
+                            set_wrap_mode: gtk::pango::WrapMode::WordChar
+                        },
+                        append = &gtk::ListBox {
+                            add_css_class: "boxed-list",
+                            append: topic_entry = &adw::EntryRow {
+                                set_title: "Topic",
+                                set_activates_default: true,
+                                add_suffix = &gtk::Button {
+                                    set_icon_name: "dice3-symbolic",
+                                    set_tooltip_text: Some("Generate name"),
+                                    set_valign: gtk::Align::Center,
+                                    add_css_class: "flat",
+                                    connect_clicked[topic_entry] => move |_| {
+                                        use rand::distributions::Alphanumeric;
+                                        use rand::{thread_rng, Rng};
+                                        let mut rng = thread_rng();
+                                        let chars: String = (0..10).map(|_| rng.sample(Alphanumeric) as char).collect();
+                                        topic_entry.set_text(&chars);
+                                    }
+                                }
+                            },
+                            append = &adw::ExpanderRow {
+                                set_title: "Custom server...",
+                                set_enable_expansion: false,
+                                set_show_enable_switch: true,
+                                add_row: server_entry = &adw::EntryRow {
+                                    set_title: "Server",
+                                }
+                            }
+                        },
+                        append = &gtk::Button {
+                            set_label: "Subscribe",
+                            add_css_class: "suggested-action",
+                            add_css_class: "pill",
+                            set_halign: gtk::Align::Center,
+                            connect_clicked[obj] => move |_| {
+                                obj.emit_subscribe_request();
+                                obj.close();
+                            }
+                        }
+                    },
+                },
+            },
+        }
 
-        let content = gtk::Box::builder()
-            .orientation(gtk::Orientation::Vertical)
-            .spacing(12)
-            .margin_end(12)
-            .margin_start(12)
-            .margin_top(12)
-            .margin_bottom(12)
-            .build();
-        let clamp = adw::Clamp::new();
-        clamp.set_child(Some(&content));
-
-        let description = {
-            let d = gtk::Label::builder()
-                    .label("Topics may not be password-protected, so choose a name that's not easy to guess. Once subscribed, you can PUT/POST notifications.")
-                    .wrap(true)
-                    .xalign(0.0)
-                    .wrap_mode(gtk::pango::WrapMode::WordChar)
-                    .build();
-            d.add_css_class("dim-label");
-            d
-        };
-
-        content.append(&description);
-
-        let topic_entry = {
-            let e = &imp.topic_entry;
-            e.set_title("Topic");
-            e.set_activates_default(true);
-
-            let rand_btn = {
-                let b = gtk::Button::builder()
-                    .icon_name("dice3-symbolic")
-                    .tooltip_text("Generate Name")
-                    .valign(gtk::Align::Center)
-                    .css_classes(["flat"])
-                    .build();
-                let ec = e.clone();
-                b.connect_clicked(move |_| {
-                    use rand::distributions::Alphanumeric;
-                    use rand::{thread_rng, Rng};
-                    let mut rng = thread_rng();
-                    let chars: String = (0..10).map(|_| rng.sample(Alphanumeric) as char).collect();
-                    ec.set_text(&chars);
-                });
-                b
-            };
-
-            e.add_suffix(&rand_btn);
-            e
-        };
-        // TODO: Reserved topics
-        /*let reserved_switch = {
-            adw::SwitchRow::builder()
-                .title("Reserved")
-                .subtitle("For Ntfy Pro users only")
-                .build()
-        };*/
-        let server_entry = &imp.server_entry;
-        server_entry.set_title("Server");
-
-        let expander_row = {
-            let e = adw::ExpanderRow::builder()
-                .title("Custom Server...")
-                .enable_expansion(false)
-                .show_enable_switch(true)
-                .build();
-            e.add_row(server_entry);
-            e
-        };
-        let list_box = {
-            let l = gtk::ListBox::new();
-            l.add_css_class("boxed-list");
-            l.append(topic_entry);
-            // l.append(&reserved_switch);
-            l.append(&expander_row);
-            l
-        };
-        content.append(&list_box);
-
-        let sub_btn = {
-            let b = gtk::Button::new();
-            b.set_label("Subscribe");
-            b.add_css_class("suggested-action");
-            b.add_css_class("pill");
-            b.set_halign(gtk::Align::Center);
-
-            let wc = obj.clone();
-            b.connect_clicked(move |_| {
-                wc.emit_subscribe_request();
-                wc.close();
-            });
-            b
-        };
-
-        content.append(&sub_btn);
-        toolbar_view.set_content(Some(&clamp));
+        imp.topic_entry.replace(topic_entry);
+        imp.server_entry.replace(server_entry);
 
         obj.set_content(Some(&toolbar_view));
+    }
+    pub fn topic(&self) -> String {
+        self.imp().topic_entry.borrow().text().to_string()
+    }
+    pub fn server(&self) -> String {
+        self.imp().server_entry.borrow().text().to_string()
     }
     fn emit_subscribe_request(&self) {
         self.emit_by_name::<()>("subscribe-request", &[]);

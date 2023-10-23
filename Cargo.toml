@@ -30,3 +30,4 @@ rand = "0.8.5"
 ureq = "2.7.1"
 futures = "0.3.0"
 ashpd = "0.6.0"
+relm4-macros = { version = "0.6.2", features = [], default-features = false }

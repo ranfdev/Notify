@@ -10,7 +10,7 @@ use gtk::prelude::*;
 use gtk::{gdk, gio, glib};
 use ntfy_daemon::models;
 use ntfy_daemon::ntfy_capnp::system_notifier;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 use crate::config::{APP_ID, PKGDATADIR, PROFILE, VERSION};
 use crate::widgets::*;
@@ -69,7 +69,9 @@ mod imp {
             }
 
             glib::MainContext::default().spawn_local(async move {
-                super::NotifyApplication::run_in_background().await.unwrap();
+                if let Err(e) = super::NotifyApplication::run_in_background().await {
+                    warn!(error = %e, "couldn't request running in background from portal");
+                }
             });
 
             if is_daemon {
