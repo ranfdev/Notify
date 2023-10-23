@@ -1,10 +1,10 @@
 use std::cell::OnceCell;
 use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
+use std::sync::Arc;
 use std::time::Duration;
 use std::{collections::HashMap, hash::Hash};
 
-use ashpd::desktop::notification::{Notification, NotificationProxy};
 use capnp::capability::Promise;
 use capnp_rpc::{pry, rpc_twoparty_capnp, twoparty, RpcSystem};
 use futures::future::join_all;
@@ -36,6 +36,7 @@ pub struct NotifyForwarder {
     db: Db,
     watching: Weak<RefCell<Arena<output_channel::Client>>>,
     status: Rc<Cell<Status>>,
+    notification_proxy: Arc<dyn models::NotificationProxy>,
 }
 impl NotifyForwarder {
     pub fn new(
@@ -43,12 +44,14 @@ impl NotifyForwarder {
         db: Db,
         watching: Weak<RefCell<Arena<output_channel::Client>>>,
         status: Rc<Cell<Status>>,
+        notification_proxy: Arc<dyn models::NotificationProxy>,
     ) -> Self {
         Self {
             model,
             db,
             watching,
             status,
+            notification_proxy,
         }
     }
 }
@@ -89,27 +92,23 @@ impl output_channel::Server for NotifyForwarder {
             if !{ self.model.borrow().muted } {
                 let msg: Message = pry!(serde_json::from_str(&message)
                     .map_err(|e| Error::InvalidMessage(message.to_string(), e)));
+                let np = self.notification_proxy.clone();
                 tokio::task::spawn_local(async move {
-                    let proxy = match NotificationProxy::new().await {
-                        Ok(p) => p,
-                        Err(e) => {
-                            panic!("Can't show notification: {:?}", e);
-                        }
-                    };
-
                     let title = msg.display_title();
                     let title = title.as_ref().map(|x| x.as_str()).unwrap_or(&msg.topic);
 
-                    let n = Notification::new(&title).body(
-                        msg.display_message()
+                    let n = models::Notification {
+                        title: title.to_string(),
+                        body: msg
+                            .display_message()
                             .as_ref()
                             .map(|x| x.as_str())
-                            .unwrap_or(""),
-                    );
+                            .unwrap_or("")
+                            .to_string(),
+                    };
 
-                    let notification_id = "com.ranfdev.Notify";
                     info!("Showing notification");
-                    proxy.add_notification(notification_id, n).await.unwrap();
+                    np.send(n).unwrap();
                 });
             }
 
@@ -178,10 +177,16 @@ pub struct SubscriptionImpl {
     server_watch_handle: OnceCell<watch_handle::Client>,
     watchers: Rc<RefCell<Arena<output_channel::Client>>>,
     status: Rc<Cell<Status>>,
+    notification_proxy: Arc<dyn models::NotificationProxy>,
 }
 
 impl SubscriptionImpl {
-    fn new(model: models::Subscription, server: ntfy_proxy::Client, db: Db) -> Self {
+    fn new(
+        model: models::Subscription,
+        server: ntfy_proxy::Client,
+        db: Db,
+        notification_proxy: Arc<dyn models::NotificationProxy>,
+    ) -> Self {
         Self {
             model: Rc::new(RefCell::new(model)),
             server,
@@ -189,6 +194,7 @@ impl SubscriptionImpl {
             watchers: Default::default(),
             server_watch_handle: Default::default(),
             status: Rc::new(Cell::new(Status::Down)),
+            notification_proxy,
         }
     }
 
@@ -198,6 +204,7 @@ impl SubscriptionImpl {
             self.db.clone(),
             Rc::downgrade(&self.watchers),
             self.status.clone(),
+            self.notification_proxy.clone(),
         )
     }
 }
@@ -319,14 +326,16 @@ pub struct SystemNotifier {
     servers: HashMap<String, ntfy_proxy::Client>,
     watching: Rc<RefCell<HashMap<WatchKey, subscription::Client>>>,
     db: Db,
+    notification_proxy: Arc<dyn models::NotificationProxy>,
 }
 
 impl SystemNotifier {
-    pub fn new(dbpath: &str) -> Self {
+    pub fn new(dbpath: &str, notification_proxy: Arc<dyn models::NotificationProxy>) -> Self {
         Self {
             servers: HashMap::new(),
             watching: Rc::new(RefCell::new(HashMap::new())),
             db: Db::connect(dbpath).unwrap(),
+            notification_proxy,
         }
     }
     fn watch(&mut self, sub: models::Subscription) -> Promise<subscription::Client, capnp::Error> {
@@ -335,7 +344,12 @@ impl SystemNotifier {
             .entry(sub.server.to_owned())
             .or_insert_with(|| capnp_rpc::new_client(NtfyProxyImpl::new(sub.server.to_owned())));
 
-        let subscription = SubscriptionImpl::new(sub.clone(), ntfy.clone(), self.db.clone());
+        let subscription = SubscriptionImpl::new(
+            sub.clone(),
+            ntfy.clone(),
+            self.db.clone(),
+            self.notification_proxy.clone(),
+        );
 
         let mut req = ntfy.watch_request();
         req.get().set_topic(&sub.topic);
@@ -452,7 +466,11 @@ impl system_notifier::Server for SystemNotifier {
     }
 }
 
-pub fn start(socket_path: std::path::PathBuf, dbpath: &str) -> anyhow::Result<()> {
+pub fn start(
+    socket_path: std::path::PathBuf,
+    dbpath: &str,
+    notification_proxy: Arc<dyn models::NotificationProxy>,
+) -> anyhow::Result<()> {
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
@@ -465,7 +483,7 @@ pub fn start(socket_path: std::path::PathBuf, dbpath: &str) -> anyhow::Result<()
     let dbpath = dbpath.to_owned();
     let f = move || {
         let local = tokio::task::LocalSet::new();
-        let mut system_notifier = SystemNotifier::new(&dbpath);
+        let mut system_notifier = SystemNotifier::new(&dbpath, notification_proxy);
         local.spawn_local(async move {
             system_notifier.watch_subscribed().await.unwrap();
             let system_client: system_notifier::Client = capnp_rpc::new_client(system_notifier);

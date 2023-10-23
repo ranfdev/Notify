@@ -8,6 +8,7 @@ use gio::SocketClient;
 use gio::UnixSocketAddress;
 use gtk::prelude::*;
 use gtk::{gdk, gio, glib};
+use ntfy_daemon::models;
 use ntfy_daemon::ntfy_capnp::system_notifier;
 use tracing::{debug, info};
 
@@ -183,8 +184,29 @@ impl NotifyApplication {
     fn ensure_rpc_running(&self, socket_path: &Path) {
         let dbpath = glib::user_data_dir().join("com.ranfdev.Notify.sqlite");
         info!(database_path = %dbpath.display());
-        ntfy_daemon::system_client::start(socket_path.to_owned(), dbpath.to_str().unwrap())
-            .unwrap();
+
+        let (tx, rx) = glib::MainContext::channel(Default::default());
+        let app = self.clone();
+        rx.attach(None, move |n: models::Notification| {
+            let gio_notif = gio::Notification::new(&n.title);
+            gio_notif.set_body(Some(&n.body));
+            app.send_notification(None, &gio_notif);
+            glib::ControlFlow::Continue
+        });
+
+        struct Proxy(glib::Sender<models::Notification>);
+        impl models::NotificationProxy for Proxy {
+            fn send(&self, n: models::Notification) -> anyhow::Result<()> {
+                self.0.send(n)?;
+                Ok(())
+            }
+        }
+        ntfy_daemon::system_client::start(
+            socket_path.to_owned(),
+            dbpath.to_str().unwrap(),
+            std::sync::Arc::new(Proxy(tx)),
+        )
+        .unwrap();
         self.imp().hold_guard.set(self.hold()).unwrap();
     }
 

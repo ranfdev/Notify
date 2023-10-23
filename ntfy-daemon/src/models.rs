@@ -261,3 +261,12 @@ impl From<Status> for u8 {
         }
     }
 }
+
+pub struct Notification {
+    pub title: String,
+    pub body: String,
+}
+
+pub trait NotificationProxy: Sync + Send {
+    fn send(&self, n: Notification) -> anyhow::Result<()>;
+}
