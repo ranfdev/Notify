@@ -260,6 +260,9 @@ impl Subscription {
             return Promise::ok(());
         };
         let value = last.time;
+        if self.imp().read_until.get() == value {
+            return Promise::ok(());
+        }
 
         let this = self.clone();
         Promise::from_future(async move {

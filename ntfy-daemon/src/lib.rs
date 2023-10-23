@@ -1,10 +1,20 @@
 pub mod message_repo;
 pub mod models;
-pub mod ntfy_proxy;
 pub mod retry;
 pub mod system_client;
+pub mod topic_listener;
 pub mod ntfy_capnp {
     include!(concat!(env!("OUT_DIR"), "/src/ntfy_capnp.rs"));
+}
+
+use std::sync::Arc;
+
+#[derive(Clone)]
+pub struct SharedEnv {
+    db: message_repo::Db,
+    proxy: Arc<dyn models::NotificationProxy>,
+    http: reqwest::Client,
+    network: Arc<ashpd::desktop::network_monitor::NetworkMonitor<'static>>,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -21,4 +31,10 @@ pub enum Error {
     Db(#[from] rusqlite::Error),
     #[error("subscription not found while {0}")]
     SubscriptionNotFound(String),
+}
+
+impl From<Error> for capnp::Error {
+    fn from(value: Error) -> Self {
+        capnp::Error::failed(format!("{:?}", value))
+    }
 }

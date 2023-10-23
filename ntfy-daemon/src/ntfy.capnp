@@ -14,12 +14,6 @@ interface OutputChannel {
     done @2 ();
 }
 
-interface NtfyProxy {
-    getServer @0 () -> (server: Text);
-    watch @1 (topic: Text, watcher: OutputChannel, since: UInt64) -> (handle: WatchHandle);
-    publish @2 (message: Text);
-}
-
 struct SubscriptionInfo {
     server @0 :Text;
     topic @1 :Text;

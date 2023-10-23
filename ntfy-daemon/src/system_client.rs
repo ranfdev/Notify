@@ -1,57 +1,50 @@
-use std::cell::OnceCell;
 use std::cell::{Cell, RefCell};
+use std::ops::ControlFlow;
 use std::rc::{Rc, Weak};
 use std::sync::Arc;
 use std::time::Duration;
 use std::{collections::HashMap, hash::Hash};
 
+use ashpd::desktop::network_monitor::NetworkMonitor;
 use capnp::capability::Promise;
 use capnp_rpc::{pry, rpc_twoparty_capnp, twoparty, RpcSystem};
 use futures::future::join_all;
 use futures::prelude::*;
 use generational_arena::Arena;
 use tokio::net::UnixListener;
+use tokio::sync::mpsc;
 use tracing::{error, info, warn};
 
 use crate::models::Message;
 use crate::Error;
+use crate::SharedEnv;
 use crate::{
     message_repo::Db,
     models::{self, MinMessage},
-    ntfy_capnp::ntfy_proxy,
     ntfy_capnp::{output_channel, subscription, system_notifier, watch_handle, Status},
-    ntfy_proxy::NtfyProxyImpl,
+    topic_listener::{build_client, TopicListener},
 };
 
 const MESSAGE_THROTTLE: Duration = Duration::from_millis(150);
 
-impl From<Error> for capnp::Error {
-    fn from(value: Error) -> Self {
-        capnp::Error::failed(format!("{:?}", value))
-    }
-}
-
 pub struct NotifyForwarder {
     model: Rc<RefCell<models::Subscription>>,
-    db: Db,
+    env: SharedEnv,
     watching: Weak<RefCell<Arena<output_channel::Client>>>,
     status: Rc<Cell<Status>>,
-    notification_proxy: Arc<dyn models::NotificationProxy>,
 }
 impl NotifyForwarder {
     pub fn new(
         model: Rc<RefCell<models::Subscription>>,
-        db: Db,
+        env: SharedEnv,
         watching: Weak<RefCell<Arena<output_channel::Client>>>,
         status: Rc<Cell<Status>>,
-        notification_proxy: Arc<dyn models::NotificationProxy>,
     ) -> Self {
         Self {
             model,
-            db,
+            env,
             watching,
             status,
-            notification_proxy,
         }
     }
 }
@@ -73,7 +66,7 @@ impl output_channel::Server for NotifyForwarder {
             let min_message: MinMessage = pry!(serde_json::from_str(&message)
                 .map_err(|e| Error::InvalidMinMessage(message.to_string(), e)));
             let model = self.model.borrow();
-            match self.db.insert_message(&model.server, message) {
+            match self.env.db.insert_message(&model.server, message) {
                 Err(Error::DuplicateMessage) => {
                     warn!(min_message = ?min_message, "Received duplicate message");
                     true
@@ -92,7 +85,7 @@ impl output_channel::Server for NotifyForwarder {
             if !{ self.model.borrow().muted } {
                 let msg: Message = pry!(serde_json::from_str(&message)
                     .map_err(|e| Error::InvalidMessage(message.to_string(), e)));
-                let np = self.notification_proxy.clone();
+                let np = self.env.proxy.clone();
                 tokio::task::spawn_local(async move {
                     let title = msg.display_title();
                     let title = title.as_ref().map(|x| x.as_str()).unwrap_or(&msg.topic);
@@ -172,40 +165,64 @@ impl Drop for WatcherImpl {
 
 pub struct SubscriptionImpl {
     model: Rc<RefCell<models::Subscription>>,
-    db: Db,
-    server: ntfy_proxy::Client,
-    server_watch_handle: OnceCell<watch_handle::Client>,
+    env: SharedEnv,
     watchers: Rc<RefCell<Arena<output_channel::Client>>>,
     status: Rc<Cell<Status>>,
-    notification_proxy: Arc<dyn models::NotificationProxy>,
+    topic_listener: mpsc::Sender<ControlFlow<()>>,
+}
+
+impl Drop for SubscriptionImpl {
+    fn drop(&mut self) {
+        let t = self.topic_listener.clone();
+        tokio::task::spawn_local(async move {
+            t.send(ControlFlow::Break(())).await.unwrap();
+        });
+    }
 }
 
 impl SubscriptionImpl {
-    fn new(
-        model: models::Subscription,
-        server: ntfy_proxy::Client,
-        db: Db,
-        notification_proxy: Arc<dyn models::NotificationProxy>,
-    ) -> Self {
+    fn new(model: models::Subscription, env: SharedEnv) -> Self {
+        let status = Rc::new(Cell::new(Status::Down));
+        let watchers = Default::default();
+        let rc_model = Rc::new(RefCell::new(model.clone()));
+        let output_channel = NotifyForwarder::new(
+            rc_model.clone(),
+            env.clone(),
+            Rc::downgrade(&watchers),
+            status.clone(),
+        );
+        let topic_listener = TopicListener::new(
+            env.clone(),
+            model.server.clone(),
+            model.topic.clone(),
+            model.read_until,
+            capnp_rpc::new_client(output_channel),
+        );
         Self {
-            model: Rc::new(RefCell::new(model)),
-            server,
-            db,
-            watchers: Default::default(),
-            server_watch_handle: Default::default(),
-            status: Rc::new(Cell::new(Status::Down)),
-            notification_proxy,
+            model: rc_model,
+            env,
+            watchers,
+            status,
+            topic_listener,
         }
     }
 
-    fn output_channel(&self) -> NotifyForwarder {
-        NotifyForwarder::new(
-            self.model.clone(),
-            self.db.clone(),
-            Rc::downgrade(&self.watchers),
-            self.status.clone(),
-            self.notification_proxy.clone(),
-        )
+    fn _publish<'a>(&'a mut self, msg: &'a str) -> impl Future<Output = Result<(), capnp::Error>> {
+        let msg = msg.to_owned();
+        let req = self.env.http.post(&self.model.borrow().server).body(msg);
+
+        async move {
+            info!("sending message");
+            let res = req.send().await;
+            match res {
+                Err(e) => Err(capnp::Error::failed(e.to_string())),
+                Ok(res) => {
+                    res.error_for_status()
+                        .map_err(|e| capnp::Error::failed(e.to_string()))?;
+                    Ok(())
+                }
+            }
+        }
     }
 }
 
@@ -222,6 +239,7 @@ impl subscription::Server for SubscriptionImpl {
         let msgs = {
             let model = self.model.borrow();
             pry!(self
+                .env
                 .db
                 .list_messages(&model.server, &model.topic, since)
                 .map_err(Error::Db))
@@ -250,18 +268,17 @@ impl subscription::Server for SubscriptionImpl {
             Ok(())
         })
     }
+
     fn publish(
         &mut self,
         params: subscription::PublishParams,
         _results: subscription::PublishResults,
     ) -> capnp::capability::Promise<(), capnp::Error> {
         let msg = pry!(pry!(params.get()).get_message());
-
-        let mut req = self.server.publish_request();
-        req.get().set_message(msg);
+        let fut = self._publish(msg);
 
         Promise::from_future(async move {
-            req.send().promise.await?;
+            fut.await?;
             Ok(())
         })
     }
@@ -289,7 +306,7 @@ impl subscription::Server for SubscriptionImpl {
         model.display_name = pry!(info.get_display_name()).to_string();
         model.muted = info.get_muted();
         model.read_until = info.get_read_until();
-        pry!(self.db.update_subscription(model.clone()));
+        pry!(self.env.db.update_subscription(model.clone()));
         Promise::ok(())
     }
     fn clear_notifications(
@@ -298,7 +315,7 @@ impl subscription::Server for SubscriptionImpl {
         _results: subscription::ClearNotificationsResults,
     ) -> capnp::capability::Promise<(), capnp::Error> {
         let model = self.model.borrow_mut();
-        pry!(self.db.delete_messages(&model.server, &model.topic));
+        pry!(self.env.db.delete_messages(&model.server, &model.topic));
         Promise::ok(())
     }
 
@@ -310,6 +327,7 @@ impl subscription::Server for SubscriptionImpl {
         let value = pry!(params.get()).get_value();
         let mut model = self.model.borrow_mut();
         pry!(self
+            .env
             .db
             .update_read_until(&model.server, &model.topic, value));
         model.read_until = value;
@@ -323,53 +341,33 @@ pub struct WatchKey {
     topic: String,
 }
 pub struct SystemNotifier {
-    servers: HashMap<String, ntfy_proxy::Client>,
     watching: Rc<RefCell<HashMap<WatchKey, subscription::Client>>>,
-    db: Db,
-    notification_proxy: Arc<dyn models::NotificationProxy>,
+    env: SharedEnv,
 }
 
 impl SystemNotifier {
-    pub fn new(dbpath: &str, notification_proxy: Arc<dyn models::NotificationProxy>) -> Self {
+    pub fn new(
+        dbpath: &str,
+        notification_proxy: Arc<dyn models::NotificationProxy>,
+        network: Arc<NetworkMonitor<'static>>,
+    ) -> Self {
         Self {
-            servers: HashMap::new(),
             watching: Rc::new(RefCell::new(HashMap::new())),
-            db: Db::connect(dbpath).unwrap(),
-            notification_proxy,
+            env: SharedEnv {
+                db: Db::connect(dbpath).unwrap(),
+                proxy: notification_proxy,
+                http: build_client().unwrap(),
+                network,
+            },
         }
     }
     fn watch(&mut self, sub: models::Subscription) -> Promise<subscription::Client, capnp::Error> {
-        let ntfy = self
-            .servers
-            .entry(sub.server.to_owned())
-            .or_insert_with(|| capnp_rpc::new_client(NtfyProxyImpl::new(sub.server.to_owned())));
-
-        let subscription = SubscriptionImpl::new(
-            sub.clone(),
-            ntfy.clone(),
-            self.db.clone(),
-            self.notification_proxy.clone(),
-        );
-
-        let mut req = ntfy.watch_request();
-        req.get().set_topic(&sub.topic);
-        req.get()
-            .set_watcher(capnp_rpc::new_client(subscription.output_channel()));
-        let res = req.send();
-        let handle = res.pipeline.get_handle();
-        subscription
-            .server_watch_handle
-            .set(handle)
-            .map_err(|_| "already set")
-            .unwrap();
+        let subscription = SubscriptionImpl::new(sub.clone(), self.env.clone());
 
         let watching = self.watching.clone();
         let subc: subscription::Client = capnp_rpc::new_client(subscription);
 
         Promise::from_future(async move {
-            res.promise
-                .await
-                .map_err(|e| capnp::Error::failed(e.to_string()))?;
             watching.borrow_mut().insert(
                 WatchKey {
                     server: sub.server.to_owned(),
@@ -381,7 +379,7 @@ impl SystemNotifier {
         })
     }
     pub fn watch_subscribed(&mut self) -> Promise<(), capnp::Error> {
-        let f: Vec<_> = pry!(self.db.list_subscriptions())
+        let f: Vec<_> = pry!(self.env.db.list_subscriptions())
             .into_iter()
             .map(|m| self.watch(m.clone()))
             .collect();
@@ -418,7 +416,7 @@ impl system_notifier::Server for SystemNotifier {
         );
         let sub: Promise<subscription::Client, capnp::Error> = self.watch(subscription.clone());
 
-        let mut db = self.db.clone();
+        let mut db = self.env.db.clone();
         Promise::from_future(async move {
             results.get().set_subscription(sub.await?);
 
@@ -441,6 +439,7 @@ impl system_notifier::Server for SystemNotifier {
                 topic: topic.to_string(),
             });
             pry!(self
+                .env
                 .db
                 .remove_subscription(&server, &topic)
                 .map_err(|e| capnp::Error::failed(e.to_string())));
@@ -475,6 +474,7 @@ pub fn start(
         .enable_all()
         .build()?;
 
+    let network_monitor = rt.block_on(async move { NetworkMonitor::new().await.unwrap() });
     let listener = rt.block_on(async move {
         let _ = std::fs::remove_file(&socket_path);
         UnixListener::bind(&socket_path).unwrap()
@@ -483,7 +483,8 @@ pub fn start(
     let dbpath = dbpath.to_owned();
     let f = move || {
         let local = tokio::task::LocalSet::new();
-        let mut system_notifier = SystemNotifier::new(&dbpath, notification_proxy);
+        let mut system_notifier =
+            SystemNotifier::new(&dbpath, notification_proxy, Arc::new(network_monitor));
         local.spawn_local(async move {
             system_notifier.watch_subscribed().await.unwrap();
             let system_client: system_notifier::Client = capnp_rpc::new_client(system_notifier);
