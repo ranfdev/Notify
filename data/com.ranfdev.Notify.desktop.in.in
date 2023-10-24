@@ -1,6 +1,6 @@
 [Desktop Entry]
 Name=Notify
-Comment=Write a GTK + Rust application
+Comment=ntfy.sh client application to receive everyday's notifications
 Type=Application
 Exec=notify
 Terminal=false
