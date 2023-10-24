@@ -75,6 +75,15 @@ impl Message {
             title_text
         })
     }
+    pub fn notification_title(&self, subscription: &Subscription) -> String {
+        self.display_title()
+            .or(if subscription.display_name.is_empty() {
+                None
+            } else {
+                Some(subscription.display_name.to_string())
+            })
+            .unwrap_or(self.topic.to_string())
+    }
 
     pub fn display_message(&self) -> Option<String> {
         self.message.as_ref().map(|message| {

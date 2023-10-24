@@ -86,23 +86,21 @@ impl output_channel::Server for NotifyForwarder {
                 let msg: Message = pry!(serde_json::from_str(&message)
                     .map_err(|e| Error::InvalidMessage(message.to_string(), e)));
                 let np = self.env.proxy.clone();
-                tokio::task::spawn_local(async move {
-                    let title = msg.display_title();
-                    let title = title.as_ref().map(|x| x.as_str()).unwrap_or(&msg.topic);
 
-                    let n = models::Notification {
-                        title: title.to_string(),
-                        body: msg
-                            .display_message()
-                            .as_ref()
-                            .map(|x| x.as_str())
-                            .unwrap_or("")
-                            .to_string(),
-                    };
+                let title = { msg.notification_title(&*self.model.borrow()) };
 
-                    info!("Showing notification");
-                    np.send(n).unwrap();
-                });
+                let n = models::Notification {
+                    title: title.to_string(),
+                    body: msg
+                        .display_message()
+                        .as_ref()
+                        .map(|x| x.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                };
+
+                info!("Showing notification");
+                np.send(n).unwrap();
             }
 
             // Forward
