@@ -72,6 +72,8 @@ mod imp {
         pub message_scroll: TemplateChild<gtk::ScrolledWindow>,
         #[template_child]
         pub banner: TemplateChild<adw::Banner>,
+        #[template_child]
+        pub send_btn: TemplateChild<gtk::Button>,
         pub notifier: OnceCell<system_notifier::Client>,
         pub conn: OnceCell<gio::SocketConnection>,
         pub settings: gio::Settings,
@@ -81,24 +83,25 @@ mod imp {
     impl Default for NotifyWindow {
         fn default() -> Self {
             let this = Self {
-                headerbar: TemplateChild::default(),
-                message_list: TemplateChild::default(),
-                entry: TemplateChild::default(),
-                subscription_view: TemplateChild::default(),
-                navigation_split_view: TemplateChild::default(),
-                subscription_menu_btn: TemplateChild::default(),
-                subscription_list: TemplateChild::default(),
-                toast_overlay: TemplateChild::default(),
-                stack: TemplateChild::default(),
-                welcome_view: TemplateChild::default(),
-                list_view: TemplateChild::default(),
-                message_scroll: TemplateChild::default(),
-                banner: TemplateChild::default(),
+                headerbar: Default::default(),
+                message_list: Default::default(),
+                entry: Default::default(),
+                subscription_view: Default::default(),
+                navigation_split_view: Default::default(),
+                subscription_menu_btn: Default::default(),
+                subscription_list: Default::default(),
+                toast_overlay: Default::default(),
+                stack: Default::default(),
+                welcome_view: Default::default(),
+                list_view: Default::default(),
+                message_scroll: Default::default(),
+                banner: Default::default(),
                 subscription_list_model: gio::ListStore::new::<Subscription>(),
                 settings: gio::Settings::new(APP_ID),
-                notifier: OnceCell::new(),
-                conn: OnceCell::new(),
-                banner_binding: Cell::new(None),
+                notifier: Default::default(),
+                conn: Default::default(),
+                banner_binding: Default::default(),
+                send_btn: Default::default(),
             };
 
             this
@@ -139,7 +142,6 @@ mod imp {
                 this.show_subscription_info();
             });
             klass.install_action("win.clear-notifications", None, |this, _, _| {
-                /*spawn_local(this.subscription().clear_notifications().map_err(this.near_toast_overlay().error_handler()));*/
                 this.selected_subscription().map(|sub| {
                     this.spawn_with_near_toast(sub.clear_notifications());
                 });
@@ -203,23 +205,27 @@ impl NotifyWindow {
         // Load latest window state
         obj.load_window_size();
         obj.bind_message_list();
-        obj.connect_entry_changed();
+        obj.connect_entry_and_send_btn();
         obj.connect_items_changed();
         obj.selected_subscription_changed(None);
         obj.bind_flag_read();
 
         obj
     }
-    fn connect_entry_changed(&self) {
+    fn connect_entry_and_send_btn(&self) {
         let imp = self.imp();
         let this = self.clone();
-        imp.entry.connect_activate(move |entry| {
+        let entry = imp.entry.clone();
+        let publish = move || {
             let p = this
                 .selected_subscription()
                 .unwrap()
                 .publish(entry.text().as_str());
             entry.spawn_with_near_toast(async move { p.await });
-        });
+        };
+        let publishc = publish.clone();
+        imp.entry.connect_activate(move |_| publishc());
+        imp.send_btn.connect_clicked(move |_| publish());
     }
     fn show_subscription_info(&self) {
         let sub = SubscriptionInfoDialog::new(self.selected_subscription().unwrap());

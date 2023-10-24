@@ -10,5 +10,6 @@
   </gresource>
   <gresource prefix="/com/ranfdev/Notify/icons/16x16/status/">
     <file preprocess="xml-stripblanks" alias="dice3-symbolic.svg">../icons/dice3-symbolic.svg</file>
+    <file preprocess="xml-stripblanks" alias="paper-plane-symbolic.svg">../icons/paper-plane-symbolic.svg</file>
   </gresource>
 </gresources>

@@ -132,8 +132,19 @@ template $NotifyWindow : Adw.ApplicationWindow {
             margin-start: 8;
             margin-end: 8;
             Adw.Clamp {
-              Entry entry {
-                placeholder-text: "Message...";
+              Gtk.Box {
+                spacing: 8;
+                Entry entry {
+                  placeholder-text: "Message...";
+                  hexpand: true;
+                }
+                Gtk.Button send_btn {
+                  styles [
+                    "circular",
+                    "suggested-action"
+                  ]
+                  icon-name: "paper-plane-symbolic";
+                }
               }
             }
           }

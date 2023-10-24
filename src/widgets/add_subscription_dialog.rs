@@ -126,6 +126,7 @@ impl AddSubscriptionDialog {
                             add_css_class: "suggested-action",
                             add_css_class: "pill",
                             set_halign: gtk::Align::Center,
+                            set_sensitive: false,
                             connect_clicked[obj] => move |_| {
                                 obj.emit_subscribe_request();
                                 obj.close();
