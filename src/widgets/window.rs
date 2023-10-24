@@ -119,7 +119,15 @@ mod imp {
             let this = self.obj().clone();
             let dc = dialog.clone();
             dialog.connect_local("subscribe-request", true, move |_| {
-                this.add_subscription(&dc.server(), &dc.topic());
+                let sub = match dc.subscription() {
+                    Ok(sub) => sub,
+                    Err(e) => {
+                        warn!(errors = ?e, "trying to add invalid subscription");
+                        return None;
+                    }
+                };
+                this.add_subscription(sub);
+                dc.close();
                 None
             });
         }
@@ -246,11 +254,11 @@ impl NotifyWindow {
             });
     }
 
-    fn add_subscription(&self, server: &str, topic: &str) {
+    fn add_subscription(&self, sub: models::Subscription) {
         let mut req = self.notifier().subscribe_request();
 
-        req.get().set_server(server);
-        req.get().set_topic(topic);
+        req.get().set_server(&sub.server);
+        req.get().set_topic(&sub.topic);
         let res = req.send();
         let this = self.clone();
         self.spawn_with_near_toast(async move {

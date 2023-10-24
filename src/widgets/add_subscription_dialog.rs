@@ -8,13 +8,18 @@ use gtk::gio;
 use gtk::glib;
 use ntfy_daemon::models;
 
+#[derive(Default, Debug, Clone)]
+pub struct Widgets {
+    pub topic_entry: adw::EntryRow,
+    pub server_entry: adw::EntryRow,
+    pub server_expander: adw::ExpanderRow,
+    pub sub_btn: gtk::Button,
+}
 mod imp {
     pub use super::*;
     #[derive(Debug, Default)]
     pub struct AddSubscriptionDialog {
-        pub topic_entry: RefCell<adw::EntryRow>,
-        pub server_entry: RefCell<adw::EntryRow>,
-        pub sub_btn: RefCell<gtk::Button>,
+        pub widgets: RefCell<Widgets>,
     }
 
     #[glib::object_subclass]
@@ -32,7 +37,6 @@ mod imp {
             );
             klass.install_action("default.activate", None, |this, _, _| {
                 this.emit_subscribe_request();
-                this.close();
             });
         }
     }
@@ -112,7 +116,7 @@ impl AddSubscriptionDialog {
                                     }
                                 }
                             },
-                            append = &adw::ExpanderRow {
+                            append: server_expander = &adw::ExpanderRow {
                                 set_title: "Custom server...",
                                 set_enable_expansion: false,
                                 set_show_enable_switch: true,
@@ -129,7 +133,6 @@ impl AddSubscriptionDialog {
                             set_sensitive: false,
                             connect_clicked[obj] => move |_| {
                                 obj.emit_subscribe_request();
-                                obj.close();
                             }
                         }
                     },
@@ -142,34 +145,58 @@ impl AddSubscriptionDialog {
         topic_entry.delegate().unwrap().connect_changed(move |_| {
             txc.send(()).unwrap();
         });
+        let txc = tx.clone();
+        server_entry.delegate().unwrap().connect_changed(move |_| {
+            txc.send(()).unwrap();
+        });
+        server_expander.connect_enable_expansion_notify(move |_| {
+            tx.send(()).unwrap();
+        });
         let rx = crate::async_utils::debounce_channel(std::time::Duration::from_millis(500), rx);
         let objc = obj.clone();
         rx.attach(None, move |_| {
             objc.check_errors();
             glib::ControlFlow::Continue
         });
-        imp.topic_entry.replace(topic_entry);
-        imp.server_entry.replace(server_entry);
-        imp.sub_btn.replace(sub_btn);
+        imp.widgets.replace(Widgets {
+            topic_entry,
+            server_expander,
+            server_entry,
+            sub_btn,
+        });
 
         obj.set_content(Some(&toolbar_view));
     }
-    pub fn topic(&self) -> String {
-        self.imp().topic_entry.borrow().text().to_string()
-    }
-    pub fn server(&self) -> String {
-        self.imp().server_entry.borrow().text().to_string()
+    pub fn subscription(&self) -> Result<models::Subscription, Vec<ntfy_daemon::Error>> {
+        let w = { self.imp().widgets.borrow().clone() };
+        let mut sub = models::Subscription::builder(w.topic_entry.text().to_string());
+        if w.server_expander.enables_expansion() {
+            sub = sub.server(w.server_entry.text().to_string());
+        }
+
+        sub.build()
     }
     fn check_errors(&self) {
-        let imp = self.imp();
-        let topic_entry = imp.topic_entry.borrow().clone();
-        let sub_btn = imp.sub_btn.borrow().clone();
-        if let Err(_) = models::validate_topic(&topic_entry.delegate().unwrap().text()) {
-            topic_entry.add_css_class("error");
-            sub_btn.set_sensitive(false);
-        } else {
-            topic_entry.remove_css_class("error");
-            sub_btn.set_sensitive(true);
+        let w = { self.imp().widgets.borrow().clone() };
+        let sub = self.subscription();
+
+        w.server_entry.remove_css_class("error");
+        w.topic_entry.remove_css_class("error");
+        w.sub_btn.set_sensitive(true);
+
+        if let Err(errs) = sub {
+            w.sub_btn.set_sensitive(false);
+            for e in errs {
+                match e {
+                    ntfy_daemon::Error::InvalidTopic(_) => {
+                        w.topic_entry.add_css_class("error");
+                    }
+                    ntfy_daemon::Error::InvalidServer(_) => {
+                        w.server_entry.add_css_class("error");
+                    }
+                    _ => {}
+                }
+            }
         }
     }
     fn emit_subscribe_request(&self) {

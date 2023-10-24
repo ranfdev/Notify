@@ -21,6 +21,8 @@ pub struct SharedEnv {
 pub enum Error {
     #[error("topic {0} must not be empty and must contain only alphanumeric characters and _ (underscore)")]
     InvalidTopic(String),
+    #[error("invalid server base url {0:?}")]
+    InvalidServer(#[from] url::ParseError),
     #[error("duplicate message")]
     DuplicateMessage,
     #[error("can't parse the minimum set of required fields from the message {0}")]

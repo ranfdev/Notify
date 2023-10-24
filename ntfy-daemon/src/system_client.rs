@@ -401,17 +401,11 @@ impl system_notifier::Server for SystemNotifier {
     ) -> capnp::capability::Promise<(), capnp::Error> {
         let topic = pry!(pry!(params.get()).get_topic());
         let server: &str = pry!(pry!(params.get()).get_server());
-        let server = if server.is_empty() {
-            "https://ntfy.sh"
-        } else {
-            ""
-        };
 
-        let subscription = pry!(
-            models::Subscription::builder(server.to_owned(), topic.to_owned())
-                .build()
-                .map_err(|e| capnp::Error::failed(e.to_string()))
-        );
+        let subscription = pry!(models::Subscription::builder(topic.to_owned())
+            .server(server.to_string())
+            .build()
+            .map_err(|e| capnp::Error::failed(format!("{:?}", e))));
         let sub: Promise<subscription::Client, capnp::Error> = self.watch(subscription.clone());
 
         let mut db = self.env.db.clone();

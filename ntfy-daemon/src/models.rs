@@ -121,23 +121,31 @@ pub struct Subscription {
 }
 
 impl Subscription {
-    pub fn build_url(server: &str, topic: &str, since: u64) -> anyhow::Result<url::Url> {
+    pub fn build_url(server: &str, topic: &str, since: u64) -> Result<url::Url, crate::Error> {
         let mut url = url::Url::parse(server)?;
         url.path_segments_mut()
-            .map_err(|_| anyhow::anyhow!("url can't be base"))?
+            .map_err(|_| url::ParseError::RelativeUrlWithCannotBeABaseBase)?
             .push(&topic)
             .push("json");
         url.query_pairs_mut()
             .append_pair("since", &since.to_string());
         Ok(url)
     }
-    pub fn validate(self) -> anyhow::Result<Self> {
-        validate_topic(&self.topic)?;
-        Self::build_url(&self.server, &self.topic, 0)?;
+    pub fn validate(self) -> Result<Self, Vec<crate::Error>> {
+        let mut errs = vec![];
+        if let Err(e) = validate_topic(&self.topic) {
+            errs.push(e);
+        };
+        if let Err(e) = Self::build_url(&self.server, &self.topic, 0) {
+            errs.push(e);
+        };
+        if errs.len() > 0 {
+            return Err(errs);
+        }
         Ok(self)
     }
-    pub fn builder(server: String, topic: String) -> SubscriptionBuilder {
-        SubscriptionBuilder::new(server, topic)
+    pub fn builder(topic: String) -> SubscriptionBuilder {
+        SubscriptionBuilder::new(topic)
     }
 }
 
@@ -153,9 +161,9 @@ pub struct SubscriptionBuilder {
 }
 
 impl SubscriptionBuilder {
-    pub fn new(server: String, topic: String) -> Self {
+    pub fn new(topic: String) -> Self {
         Self {
-            server,
+            server: "https://ntfy.sh".to_string(),
             topic,
             muted: false,
             archived: false,
@@ -163,6 +171,11 @@ impl SubscriptionBuilder {
             symbolic_icon: None,
             display_name: String::new(),
         }
+    }
+
+    pub fn server(mut self, server: String) -> Self {
+        self.server = server;
+        self
     }
 
     pub fn muted(mut self, muted: bool) -> Self {
@@ -190,7 +203,7 @@ impl SubscriptionBuilder {
         self
     }
 
-    pub fn build(self) -> anyhow::Result<Subscription> {
+    pub fn build(self) -> Result<Subscription, Vec<Error>> {
         let res = Subscription {
             server: self.server,
             topic: self.topic,
