@@ -6,6 +6,7 @@ use glib::once_cell::sync::Lazy;
 use glib::subclass::Signal;
 use gtk::gio;
 use gtk::glib;
+use ntfy_daemon::models;
 
 mod imp {
     pub use super::*;
@@ -13,6 +14,7 @@ mod imp {
     pub struct AddSubscriptionDialog {
         pub topic_entry: RefCell<adw::EntryRow>,
         pub server_entry: RefCell<adw::EntryRow>,
+        pub sub_btn: RefCell<gtk::Button>,
     }
 
     #[glib::object_subclass]
@@ -119,7 +121,7 @@ impl AddSubscriptionDialog {
                                 }
                             }
                         },
-                        append = &gtk::Button {
+                        append: sub_btn = &gtk::Button {
                             set_label: "Subscribe",
                             add_css_class: "suggested-action",
                             add_css_class: "pill",
@@ -134,8 +136,20 @@ impl AddSubscriptionDialog {
             },
         }
 
+        let (tx, rx) = glib::MainContext::channel(Default::default());
+        let txc = tx.clone();
+        topic_entry.delegate().unwrap().connect_changed(move |_| {
+            txc.send(()).unwrap();
+        });
+        let rx = crate::async_utils::debounce_channel(std::time::Duration::from_millis(500), rx);
+        let objc = obj.clone();
+        rx.attach(None, move |_| {
+            objc.check_errors();
+            glib::ControlFlow::Continue
+        });
         imp.topic_entry.replace(topic_entry);
         imp.server_entry.replace(server_entry);
+        imp.sub_btn.replace(sub_btn);
 
         obj.set_content(Some(&toolbar_view));
     }
@@ -144,6 +158,18 @@ impl AddSubscriptionDialog {
     }
     pub fn server(&self) -> String {
         self.imp().server_entry.borrow().text().to_string()
+    }
+    fn check_errors(&self) {
+        let imp = self.imp();
+        let topic_entry = imp.topic_entry.borrow().clone();
+        let sub_btn = imp.sub_btn.borrow().clone();
+        if let Err(_) = models::validate_topic(&topic_entry.delegate().unwrap().text()) {
+            topic_entry.add_css_class("error");
+            sub_btn.set_sensitive(false);
+        } else {
+            topic_entry.remove_css_class("error");
+            sub_btn.set_sensitive(true);
+        }
     }
     fn emit_subscribe_request(&self) {
         self.emit_by_name::<()>("subscribe-request", &[]);
