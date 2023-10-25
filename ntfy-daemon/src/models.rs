@@ -288,6 +288,7 @@ impl From<Status> for u8 {
 pub struct Notification {
     pub title: String,
     pub body: String,
+    pub actions: Vec<Action>,
 }
 
 pub trait NotificationProxy: Sync + Send {

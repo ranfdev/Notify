@@ -1,11 +1,8 @@
 use adw::prelude::*;
 use adw::subclass::prelude::*;
 use chrono::NaiveDateTime;
-use gtk::{gio, glib};
+use gtk::glib;
 use ntfy_daemon::models;
-use tracing::error;
-
-use crate::widgets::*;
 
 mod imp {
     use super::*;
@@ -141,62 +138,20 @@ impl MessageRow {
     }
     fn build_action_btn(&self, action: models::Action) -> gtk::Button {
         let btn = gtk::Button::new();
-        match action {
+        match &action {
             models::Action::View { label, url, .. } => {
                 btn.set_label(&label);
                 btn.set_tooltip_text(Some(&format!("Go to {url}")));
-                btn.connect_clicked(move |_| {
-                    gtk::UriLauncher::builder().uri(url.clone()).build().launch(
-                        gtk::Window::NONE,
-                        gio::Cancellable::NONE,
-                        |_| {},
-                    );
-                });
+                btn.set_action_name(Some("app.message-action"));
+                btn.set_action_target_value(Some(&serde_json::to_string(&action).unwrap().into()));
             }
             models::Action::Http {
-                label,
-                method,
-                url,
-                body,
-                headers,
-                ..
+                label, method, url, ..
             } => {
                 btn.set_label(&label);
                 btn.set_tooltip_text(Some(&format!("Send HTTP {method} to {url}")));
-                let (tx, rx) = glib::MainContext::channel(Default::default());
-                let this = self.clone();
-                btn.connect_clicked({
-                    let url = url.clone();
-                    let method = method.clone();
-                    move |_| {
-                        let url = url.clone();
-                        let method = method.clone();
-                        let tx = tx.clone();
-                        let body = body.clone();
-                        let headers = headers.clone();
-                        gio::spawn_blocking(move || {
-                            let mut req = ureq::request(method.as_str(), url.as_str());
-                            for (k, v) in headers.iter() {
-                                req = req.set(&k, &v);
-                            }
-                            tx.send(req.send(body.as_bytes())).unwrap();
-                        });
-                    }
-                });
-                rx.attach(Some(&glib::MainContext::default()), move |res| {
-                    let method = method.clone();
-                    let url = url.clone();
-                    this.spawn_with_near_toast(async move {
-                        match res {
-                            Err(e) => {
-                                error!(error = ?e, "Error sending request");
-                                Err(format!("Error sending HTTP {method} to {url}"))
-                            }
-                            Ok(_) => Ok(()),
-                        }
-                    });
-                    glib::ControlFlow::Continue
-                });
+                btn.set_action_name(Some("app.message-action"));
+                btn.set_action_target_value(Some(&serde_json::to_string(&action).unwrap().into()));
             }
             models::Action::Broadcast { label, .. } => {
                 btn.set_label(&label);

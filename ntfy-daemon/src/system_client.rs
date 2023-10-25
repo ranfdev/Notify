@@ -97,6 +97,7 @@ impl output_channel::Server for NotifyForwarder {
                         .map(|x| x.as_str())
                         .unwrap_or("")
                         .to_string(),
+                    actions: msg.actions,
                 };
 
                 info!("Showing notification");
