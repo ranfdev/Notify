@@ -4,6 +4,7 @@ use std::cell::OnceCell;
 use adw::prelude::*;
 use adw::subclass::prelude::*;
 use futures::prelude::*;
+use gsv::prelude::*;
 use gtk::{gio, glib};
 use ntfy_daemon::models;
 use ntfy_daemon::ntfy_capnp::{system_notifier, Status};
@@ -26,13 +27,17 @@ impl<W: glib::IsA<gtk::Widget>> SpawnWithToast for W {
         &self,
         f: impl Future<Output = Result<T, R>> + 'static,
     ) {
-        let p: Option<NotifyWindow> = self.ancestor(NotifyWindow::static_type()).and_downcast();
+        let toast_overlay: Option<adw::ToastOverlay> = self
+            .ancestor(adw::ToastOverlay::static_type())
+            .and_downcast();
+        let win: Option<NotifyWindow> = self.ancestor(NotifyWindow::static_type()).and_downcast();
         glib::MainContext::default().spawn_local(async move {
             if let Err(e) = f.await {
-                if let Some(p) = p {
-                    p.imp()
-                        .toast_overlay
-                        .add_toast(adw::Toast::builder().title(&e.to_string()).build())
+                if let Some(o) = toast_overlay
+                    .as_ref()
+                    .or_else(|| win.as_ref().map(|win| win.imp().toast_overlay.as_ref()))
+                {
+                    o.add_toast(adw::Toast::builder().title(&e.to_string()).build())
                 }
             }
         });
@@ -255,13 +260,6 @@ impl NotifyWindow {
         let this = self.clone();
         let topic = self.selected_subscription().unwrap().topic();
         let message = imp.entry.text();
-        let buffer = gtk::TextBuffer::new(None);
-        buffer.set_text(&format!(
-            r#"{{
-"topic": "{topic}",
-"message": "{message}"
-}}"#
-        ));
         relm4_macros::view! {
             window = adw::Window {
                 set_modal: true,
@@ -270,50 +268,127 @@ impl NotifyWindow {
                 set_content = &adw::ToolbarView {
                     add_top_bar = &adw::HeaderBar {},
                     #[wrap(Some)]
-                    set_content = &adw::Clamp {
+                    set_content: toast_overlay = &adw::ToastOverlay {
                         #[wrap(Some)]
-                        set_child = &gtk::Box {
-                            set_margin_top: 8,
-                            set_margin_bottom: 8,
-                            set_margin_start: 8,
-                            set_margin_end: 8,
-                            set_spacing: 8,
-                            set_orientation: gtk::Orientation::Vertical,
-                            append = &gtk::Label {
-                                set_label: "Here you can manually build the JSON message you want to POST to this topic",
-                                set_xalign: 0.0,
-                                set_halign: gtk::Align::Start,
-                                set_wrap_mode: gtk::pango::WrapMode::WordChar,
-                                set_wrap: true,
-                            },
-                            append: text_view = &gtk::TextView {
-                                set_top_margin: 8,
-                                set_bottom_margin: 8,
-                                set_left_margin: 8,
-                                set_right_margin: 8,
-                                set_hexpand: true,
-                                set_vexpand: true,
-                                set_buffer: Some(&buffer),
-                            },
-                            append = &gtk::Box {
-                                set_halign: gtk::Align::Center,
+                        set_child = &adw::Clamp {
+                            #[wrap(Some)]
+                            set_child = &gtk::Box {
+                                set_margin_top: 8,
+                                set_margin_bottom: 8,
+                                set_margin_start: 8,
+                                set_margin_end: 8,
                                 set_spacing: 8,
-                                append = &gtk::Button {
-                                    add_css_class: "pill",
-                                    set_label: "Documentation",
-                                    connect_clicked[this] => move |_| {
-                                        gtk::UriLauncher::new("https://docs.ntfy.sh/publish/#publish-as-json").launch(
-                                            Some(&this),
-                                            gio::Cancellable::NONE,
-                                            |_| {}
-                                        );
-                                    }
+                                set_orientation: gtk::Orientation::Vertical,
+                                append = &gtk::Label {
+                                    set_label: "Here you can manually build the JSON message you want to POST to this topic",
+                                    set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                                    set_xalign: 0.0,
+                                    set_halign: gtk::Align::Start,
+                                    set_wrap_mode: gtk::pango::WrapMode::WordChar,
+                                    set_wrap: true,
+                                },
+                                append = &gtk::Label {
+                                    add_css_class: "heading",
+                                    set_label: "JSON",
+                                    set_xalign: 0.0,
+                                    set_halign: gtk::Align::Start,
+                                },
+                                append: text_view = &gsv::View {
+                                    add_css_class: "code",
+                                    set_tab_width: 4,
+                                    set_indent_width: 2,
+                                    set_auto_indent: true,
+                                    set_top_margin: 4,
+                                    set_bottom_margin: 4,
+                                    set_left_margin: 4,
+                                    set_right_margin: 4,
+                                    set_hexpand: true,
+                                    set_vexpand: true,
+                                    set_monospace: true,
+                                    set_background_pattern: gsv::BackgroundPatternType::Grid
+                                },
+                                append = &gtk::Label {
+                                    add_css_class: "heading",
+                                    set_label: "Snippets",
+                                    set_xalign: 0.0,
+                                    set_halign: gtk::Align::Start,
+                                },
+                                append = &gtk::Box {
+                                    set_spacing: 4,
+                                    append = &gtk::Button {
+                                        add_css_class: "pill",
+                                        add_css_class: "small",
+                                        set_label: "Title",
+                                        connect_clicked[text_view] => move |_| {
+                                            text_view.buffer().insert_at_cursor(r#""title": "Title of your message""#)
+                                        }
+                                    },
+                                    append = &gtk::Button {
+                                        add_css_class: "pill",
+                                        add_css_class: "small",
+                                        set_label: "Tags",
+                                        connect_clicked[text_view] => move |_| {
+                                            text_view.buffer().insert_at_cursor(r#""tags": ["warning","cd"]"#)
+                                        }
+                                    },
+                                    append = &gtk::Button {
+                                        add_css_class: "pill",
+                                        add_css_class: "small",
+                                        set_label: "Priority",
+                                        connect_clicked[text_view] => move |_| {
+                                            text_view.buffer().insert_at_cursor(r#""priority": 5"#)
+                                        }
+                                    },
+                                    append = &gtk::Button {
+                                        add_css_class: "pill",
+                                        add_css_class: "small",
+                                        set_label: "View Action",
+                                        connect_clicked[text_view] => move |_| {
+                                            text_view.buffer().insert_at_cursor(r#""action": [
+        {
+          "type": "view",
+          "label": "torvalds boosted your toot",
+          "url": "https://joinmastodon.org"
+        }
+      ]"#)
+                                        }
+                                    },
+                                    append = &gtk::Button {
+                                        add_css_class: "pill",
+                                        add_css_class: "small",
+                                        set_label: "HTTP Action",
+                                        connect_clicked[text_view] => move |_| {
+                                            text_view.buffer().insert_at_cursor(r#""action": [
+        {
+          "type": "http",
+          "label": "Turn off lights",
+          "method": "post",
+          "url": "https://api.example.com/lights",
+          "body": "OFF"
+        }
+      ]"#)
+                                        }
+                                    },
+                                    append = &gtk::Button {
+                                        add_css_class: "circular",
+                                        add_css_class: "small",
+                                        set_label: "?",
+                                        connect_clicked[this] => move |_| {
+                                            gtk::UriLauncher::new("https://docs.ntfy.sh/publish/#publish-as-json").launch(
+                                                Some(&this),
+                                                gio::Cancellable::NONE,
+                                                |_| {}
+                                            );
+                                        }
+                                    },
                                 },
                                 append = &gtk::Button {
+                                    set_margin_top: 8,
+                                    set_margin_bottom: 8,
                                     add_css_class: "suggested-action",
                                     add_css_class: "pill",
                                     set_label: "Send",
-                                    connect_clicked[this, text_view] => move |_| {
+                                    connect_clicked[this, toast_overlay, text_view] => move |_| {
                                         let thisc = this.clone();
                                         let text_view = text_view.clone();
                                         let f = async move {
@@ -327,7 +402,7 @@ impl NotifyWindow {
                                                 .unwrap()
                                                 .publish_msg(msg).await
                                         };
-                                        this.spawn_with_near_toast(f);
+                                        toast_overlay.spawn_with_near_toast(f);
                                     }
                                 }
                             }
@@ -336,6 +411,26 @@ impl NotifyWindow {
                 }
             }
         }
+
+        let lang = gsv::LanguageManager::default().language("json").unwrap();
+        let buffer = gsv::Buffer::with_language(&lang);
+        buffer.set_text(&format!(
+            r#"{{
+  "topic": "{topic}",
+  "message": "{message}"
+}}"#
+        ));
+        text_view.set_buffer(Some(&buffer));
+
+        let manager = adw::StyleManager::default();
+        let scheme_name = if manager.is_dark() {
+            "solarized-dark"
+        } else {
+            "solarized-light"
+        };
+        let scheme = gsv::StyleSchemeManager::default().scheme(scheme_name);
+        buffer.set_style_scheme(scheme.as_ref());
+
         window.present();
     }
     fn show_subscription_info(&self) {

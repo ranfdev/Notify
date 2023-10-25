@@ -3,10 +3,17 @@
   font-weight: bold;
 }
 
+button.small {
+  padding: 6px 12px;
+  min-height: 0px;
+  min-width: 0px;
+  font-size: 14px;
+}
+
 .chip {
   min-height: 16px;
   min-width: 16px;
-  padding: 3px 5px;
+  padding: 2px 5px;
   color: @theme_fg_color;
   border-radius: 8px;
 }
@@ -28,4 +35,24 @@
 
 .chip--small {
   font-size: 0.8rem;
+}
+
+
+.sourceview {
+  padding: 4px 8px;
+}
+
+.code {
+  border-radius: 12px;
+  border: 1px solid @borders;
+}
+
+.message_bar {
+  padding: 2px 2px;
+  background-color: @sidebar_bg_color;
+  border-radius: 24px;
+}
+.message_bar entry {
+  background-color: @sidebar_bg_color;
+  border-radius: 12px;
 }
