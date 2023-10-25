@@ -262,6 +262,7 @@ impl NotifyWindow {
         let message = imp.entry.text();
         relm4_macros::view! {
             window = adw::Window {
+                set_default_height: 400,
                 set_modal: true,
                 set_transient_for: Some(self),
                 #[wrap(Some)]
@@ -293,19 +294,22 @@ impl NotifyWindow {
                                     set_xalign: 0.0,
                                     set_halign: gtk::Align::Start,
                                 },
-                                append: text_view = &gsv::View {
-                                    add_css_class: "code",
-                                    set_tab_width: 4,
-                                    set_indent_width: 2,
-                                    set_auto_indent: true,
-                                    set_top_margin: 4,
-                                    set_bottom_margin: 4,
-                                    set_left_margin: 4,
-                                    set_right_margin: 4,
-                                    set_hexpand: true,
-                                    set_vexpand: true,
-                                    set_monospace: true,
-                                    set_background_pattern: gsv::BackgroundPatternType::Grid
+                                append = &gtk::ScrolledWindow {
+                                    #[wrap(Some)]
+                                    set_child: text_view = &gsv::View {
+                                        add_css_class: "code",
+                                        set_tab_width: 4,
+                                        set_indent_width: 2,
+                                        set_auto_indent: true,
+                                        set_top_margin: 4,
+                                        set_bottom_margin: 4,
+                                        set_left_margin: 4,
+                                        set_right_margin: 4,
+                                        set_hexpand: true,
+                                        set_vexpand: true,
+                                        set_monospace: true,
+                                        set_background_pattern: gsv::BackgroundPatternType::Grid
+                                    },
                                 },
                                 append = &gtk::Label {
                                     add_css_class: "heading",
@@ -313,8 +317,9 @@ impl NotifyWindow {
                                     set_xalign: 0.0,
                                     set_halign: gtk::Align::Start,
                                 },
-                                append = &gtk::Box {
-                                    set_spacing: 4,
+                                append = &gtk::FlowBox {
+                                    set_column_spacing: 4,
+                                    set_row_spacing: 4,
                                     append = &gtk::Button {
                                         add_css_class: "pill",
                                         add_css_class: "small",
