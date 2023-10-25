@@ -2,11 +2,11 @@
 <schemalist>
   <schema path="/com/ranfdev/Notify/" id="@app-id@" gettext-domain="@gettext-package@">
     <key name="window-width" type="i">
-      <default>600</default>
+      <default>800</default>
       <summary>Window width</summary>
     </key>
     <key name="window-height" type="i">
-      <default>400</default>
+      <default>500</default>
       <summary>Window height</summary>
     </key>
     <key name="is-maximized" type="b">
