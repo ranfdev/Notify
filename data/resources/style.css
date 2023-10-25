@@ -16,27 +16,29 @@ button.small {
   padding: 2px 5px;
   color: @theme_fg_color;
   border-radius: 8px;
+  font-weight: bold;
 }
 .chip--warning {
   background: alpha(@yellow_2, 0.2);
+  color: darker(@yellow_5);
 }
 .chip--info {
-  color: @blue_5;
   background: alpha(@blue_2, 0.2);
+  color: darker(@blue_5);
 }
 .chip--degraded {
-  color: @orange_5;
   background: alpha(@orange_2, 0.2);
+  color: darker(@orange_5);
 }
 
 .chip--danger {
   background: alpha(@red_2, 0.2);
+  color: darker(@red_5);
 }
 
 .chip--small {
   font-size: 0.8rem;
 }
-
 
 .sourceview {
   padding: 4px 8px;
