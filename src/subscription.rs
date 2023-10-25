@@ -274,17 +274,12 @@ impl Subscription {
             Ok(())
         })
     }
-    pub fn publish(&self, message: &str) -> Promise<(), capnp::Error> {
+    pub fn publish_msg(&self, mut msg: models::Message) -> Promise<(), capnp::Error> {
         let imp = self.imp();
         let mut req = imp.client.get().unwrap().publish_request();
-        let msg = serde_json::to_string(&models::Message {
-            topic: self.topic(),
-            message: Some(message.to_string()),
-            ..models::Message::default()
-        })
-        .map_err(|e| capnp::Error::failed(e.to_string()));
-
-        req.get().set_message(&pry!(msg));
+        msg.topic = self.topic();
+        let json = serde_json::to_string(&msg).map_err(|e| capnp::Error::failed(e.to_string()));
+        req.get().set_message(&pry!(json));
 
         Promise::from_future(async move {
             let _span = debug_span!("publish").entered();

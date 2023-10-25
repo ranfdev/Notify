@@ -27,6 +27,7 @@ pub fn validate_topic(topic: &str) -> Result<&str, Error> {
 pub struct Message {
     pub topic: String,
     pub message: Option<String>,
+    #[serde(default = "Default::default")]
     pub time: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,

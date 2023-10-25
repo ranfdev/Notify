@@ -133,7 +133,13 @@ template $NotifyWindow : Adw.ApplicationWindow {
             margin-end: 8;
             Adw.Clamp {
               Gtk.Box {
-                spacing: 8;
+                spacing: 4;
+                Gtk.Button code_btn {
+                  styles [
+                    "circular"
+                  ]
+                  icon-name: "code-symbolic";
+                }
                 Entry entry {
                   placeholder-text: "Message...";
                   hexpand: true;

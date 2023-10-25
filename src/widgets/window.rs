@@ -74,6 +74,8 @@ mod imp {
         pub banner: TemplateChild<adw::Banner>,
         #[template_child]
         pub send_btn: TemplateChild<gtk::Button>,
+        #[template_child]
+        pub code_btn: TemplateChild<gtk::Button>,
         pub notifier: OnceCell<system_notifier::Client>,
         pub conn: OnceCell<gio::SocketConnection>,
         pub settings: gio::Settings,
@@ -102,6 +104,7 @@ mod imp {
                 conn: Default::default(),
                 banner_binding: Default::default(),
                 send_btn: Default::default(),
+                code_btn: Default::default(),
             };
 
             this
@@ -214,6 +217,7 @@ impl NotifyWindow {
         obj.load_window_size();
         obj.bind_message_list();
         obj.connect_entry_and_send_btn();
+        obj.connect_code_btn();
         obj.connect_items_changed();
         obj.selected_subscription_changed(None);
         obj.bind_flag_read();
@@ -228,12 +232,111 @@ impl NotifyWindow {
             let p = this
                 .selected_subscription()
                 .unwrap()
-                .publish(entry.text().as_str());
+                .publish_msg(models::Message {
+                    message: Some(entry.text().as_str().to_string()),
+                    ..models::Message::default()
+                });
+
             entry.spawn_with_near_toast(async move { p.await });
         };
         let publishc = publish.clone();
         imp.entry.connect_activate(move |_| publishc());
         imp.send_btn.connect_clicked(move |_| publish());
+    }
+    fn connect_code_btn(&self) {
+        let imp = self.imp();
+        let this = self.clone();
+        imp.code_btn.connect_clicked(move |_| {
+            this.show_docs_dialog();
+        });
+    }
+    fn show_docs_dialog(&self) {
+        let imp = self.imp();
+        let this = self.clone();
+        let topic = self.selected_subscription().unwrap().topic();
+        let message = imp.entry.text();
+        let buffer = gtk::TextBuffer::new(None);
+        buffer.set_text(&format!(
+            r#"{{
+"topic": "{topic}",
+"message": "{message}"
+}}"#
+        ));
+        relm4_macros::view! {
+            window = adw::Window {
+                set_modal: true,
+                set_transient_for: Some(self),
+                #[wrap(Some)]
+                set_content = &adw::ToolbarView {
+                    add_top_bar = &adw::HeaderBar {},
+                    #[wrap(Some)]
+                    set_content = &adw::Clamp {
+                        #[wrap(Some)]
+                        set_child = &gtk::Box {
+                            set_margin_top: 8,
+                            set_margin_bottom: 8,
+                            set_margin_start: 8,
+                            set_margin_end: 8,
+                            set_spacing: 8,
+                            set_orientation: gtk::Orientation::Vertical,
+                            append = &gtk::Label {
+                                set_label: "Here you can manually build the JSON message you want to POST to this topic",
+                                set_xalign: 0.0,
+                                set_halign: gtk::Align::Start,
+                                set_wrap_mode: gtk::pango::WrapMode::WordChar,
+                                set_wrap: true,
+                            },
+                            append: text_view = &gtk::TextView {
+                                set_top_margin: 8,
+                                set_bottom_margin: 8,
+                                set_left_margin: 8,
+                                set_right_margin: 8,
+                                set_hexpand: true,
+                                set_vexpand: true,
+                                set_buffer: Some(&buffer),
+                            },
+                            append = &gtk::Box {
+                                set_halign: gtk::Align::Center,
+                                set_spacing: 8,
+                                append = &gtk::Button {
+                                    add_css_class: "pill",
+                                    set_label: "Documentation",
+                                    connect_clicked[this] => move |_| {
+                                        gtk::UriLauncher::new("https://docs.ntfy.sh/publish/#publish-as-json").launch(
+                                            Some(&this),
+                                            gio::Cancellable::NONE,
+                                            |_| {}
+                                        );
+                                    }
+                                },
+                                append = &gtk::Button {
+                                    add_css_class: "suggested-action",
+                                    add_css_class: "pill",
+                                    set_label: "Send",
+                                    connect_clicked[this, text_view] => move |_| {
+                                        let thisc = this.clone();
+                                        let text_view = text_view.clone();
+                                        let f = async move {
+                                            let buffer = text_view.buffer();
+                                            let msg = serde_json::from_str(&buffer.text(
+                                                &mut buffer.start_iter(),
+                                                &mut buffer.end_iter(),
+                                                true,
+                                            )).map_err(|e| capnp::Error::failed(e.to_string()))?;
+                                            thisc.selected_subscription()
+                                                .unwrap()
+                                                .publish_msg(msg).await
+                                        };
+                                        this.spawn_with_near_toast(f);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        window.present();
     }
     fn show_subscription_info(&self) {
         let sub = SubscriptionInfoDialog::new(self.selected_subscription().unwrap());
@@ -362,7 +465,9 @@ impl NotifyWindow {
 
                     MessageRow::new(msg.clone()).upcast()
                 });
-            imp.subscription_menu_btn.set_visible(true);
+            imp.subscription_menu_btn.set_sensitive(true);
+            imp.send_btn.set_sensitive(true);
+            imp.code_btn.set_sensitive(true);
             imp.entry.set_sensitive(true);
 
             let this = self.clone();
@@ -380,7 +485,9 @@ impl NotifyWindow {
         } else {
             imp.message_list
                 .bind_model(gio::ListModel::NONE, |_| adw::Bin::new().into());
-            imp.subscription_menu_btn.set_visible(false);
+            imp.subscription_menu_btn.set_sensitive(false);
+            imp.code_btn.set_sensitive(false);
+            imp.send_btn.set_sensitive(false);
             imp.entry.set_sensitive(false);
         }
     }
