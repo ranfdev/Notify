@@ -1,0 +1,23 @@
+{
+  "topic": "_",
+  "title": "Your friend has arrived!",
+  "message": "A familiar person has been recognized waiting on your front door",
+  "actions": [
+    {
+        "action": "view",
+        "label": "Video Stream",
+        "url": "https://example.com"
+    },
+    {
+        "action": "http",
+        "label": "Play \"I'm coming!\" sound",
+        "url": "https://example.com"
+    },
+    {
+        "action": "view",
+        "label": "Door Controls",
+        "url": "https://example.com"
+    }
+  ],
+  "tags": ["smiley", "door"]
+}

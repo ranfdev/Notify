@@ -1,0 +1,13 @@
+{
+  "topic": "_",
+  "title": "Service https://example.com returned operational",
+  "message": "Service is up for more than 1m, after being in downtime for 30m",
+  "actions": [
+    {
+        "action": "view",
+        "label": "Open Dashboard",
+        "url": "https://example.com"
+    }
+  ],
+  "tags": ["top"]
+}

@@ -1,0 +1,7 @@
+{
+  "topic": "_",
+  "title": "Notify, the native ntfy.sh client",
+  "message": "Open Notify, subscribe to a topic, start receiving notifications! Send a notification to ntfy.sh whenever a long script finishes running, or when you detect a person in front of your door, or when the humidity sensor attached to your tomatoes is asking for help",
+  "priority": 5,
+  "tags": ["star_struck", "fireworks"]
+}

@@ -1,0 +1,14 @@
+{
+  "topic": "_",
+  "title": "Downtime detected for service https://example.com",
+  "message": "More than 1 minute of downtime detected",
+  "actions": [
+    {
+        "action": "view",
+        "label": "Open Dashboard",
+        "url": "https://example.com"
+    }
+  ],
+  "priority": 5,
+  "tags": ["arrow_down_small"]
+}

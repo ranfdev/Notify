@@ -1,0 +1,24 @@
+{
+  "topic": "_",
+  "title": "Unknown person detected on your front door",
+  "message": "An unknown person has been detected in front of your door",
+  "actions": [
+    {
+        "action": "view",
+        "label": "Video Stream",
+        "url": "https://example.com"
+    },
+    {
+        "action": "http",
+        "label": "Play \"Barking Dog\" sound",
+        "url": "https://example.com"
+    },
+    {
+        "action": "view",
+        "label": "Door Controls",
+        "url": "https://example.com"
+    }
+  ],
+  "priority": 4,
+  "tags": ["service_dog", "door"]
+}
