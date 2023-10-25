@@ -344,9 +344,9 @@ impl NotifyWindow {
                                         add_css_class: "small",
                                         set_label: "View Action",
                                         connect_clicked[text_view] => move |_| {
-                                            text_view.buffer().insert_at_cursor(r#""action": [
+                                            text_view.buffer().insert_at_cursor(r#""actions": [
         {
-          "type": "view",
+          "action": "view",
           "label": "torvalds boosted your toot",
           "url": "https://joinmastodon.org"
         }
@@ -358,9 +358,9 @@ impl NotifyWindow {
                                         add_css_class: "small",
                                         set_label: "HTTP Action",
                                         connect_clicked[text_view] => move |_| {
-                                            text_view.buffer().insert_at_cursor(r#""action": [
+                                            text_view.buffer().insert_at_cursor(r#""actions": [
         {
-          "type": "http",
+          "action": "http",
           "label": "Turn off lights",
           "method": "post",
           "url": "https://api.example.com/lights",
