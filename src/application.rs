@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::path::PathBuf;
 
 use adw::subclass::prelude::*;
 use capnp_rpc::{rpc_twoparty_capnp, twoparty, RpcSystem};
@@ -26,6 +27,7 @@ mod imp {
     #[derive(Default)]
     pub struct NotifyApplication {
         pub window: RefCell<WeakRef<NotifyWindow>>,
+        pub socket_path: RefCell<PathBuf>,
         pub hold_guard: OnceCell<gio::ApplicationHoldGuard>,
     }
 
@@ -42,6 +44,7 @@ mod imp {
         fn activate(&self) {
             debug!("AdwApplication<NotifyApplication>::activate");
             self.parent_activate();
+            self.obj().ensure_window_present();
         }
 
         fn startup(&self) {
@@ -52,20 +55,20 @@ mod imp {
             // Set icons for shell
             gtk::Window::set_default_icon_name(APP_ID);
 
+            let socket_path = glib::user_data_dir().join("com.ranfdev.Notify.socket");
+            self.socket_path.replace(socket_path);
             app.setup_css();
             app.setup_gactions();
             app.setup_accels();
         }
         fn command_line(&self, command_line: &gio::ApplicationCommandLine) -> glib::ExitCode {
-            let socket_path = glib::user_data_dir().join("com.ranfdev.Notify.socket");
-
             debug!("AdwApplication<NotifyApplication>::command_line");
             let arguments = command_line.arguments();
             let is_daemon = arguments.get(1).map(|x| x.to_str()) == Some(Some("--daemon"));
             let app = self.obj();
 
             if self.hold_guard.get().is_none() {
-                self.obj().ensure_rpc_running(&socket_path);
+                app.ensure_rpc_running(&self.socket_path.borrow());
             }
 
             glib::MainContext::default().spawn_local(async move {
@@ -78,18 +81,7 @@ mod imp {
                 return glib::ExitCode::SUCCESS;
             }
 
-            {
-                let w = self.window.borrow();
-                if let Some(window) = w.upgrade() {
-                    if window.is_visible() {
-                        window.present();
-                        return glib::ExitCode::SUCCESS;
-                    }
-                }
-            }
-
-            app.build_window(&socket_path);
-            app.main_window().present();
+            app.ensure_window_present();
 
             glib::ExitCode::SUCCESS
         }
@@ -106,6 +98,17 @@ glib::wrapper! {
 }
 
 impl NotifyApplication {
+    fn ensure_window_present(&self) {
+        if let Some(window) = { self.imp().window.borrow().upgrade() } {
+            if window.is_visible() {
+                window.present();
+                return;
+            }
+        }
+        self.build_window(&self.imp().socket_path.borrow());
+        self.main_window().present();
+    }
+
     fn main_window(&self) -> NotifyWindow {
         self.imp().window.borrow().upgrade().unwrap()
     }
