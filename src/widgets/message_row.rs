@@ -48,9 +48,7 @@ impl MessageRow {
                     .map(|time| time.format("%Y-%m-%d %H:%M:%S").to_string())
                     .unwrap_or_default(),
             )
-            .wrap_mode(gtk::pango::WrapMode::WordChar)
             .xalign(0.0)
-            .wrap(true)
             .build();
         time.add_css_class("caption");
         self.attach(&time, 0, 0, 1, 1);
@@ -67,12 +65,7 @@ impl MessageRow {
                     _ => "Invalid",
                 }
             );
-            let priority = gtk::Label::builder()
-                .label(&text)
-                .wrap_mode(gtk::pango::WrapMode::WordChar)
-                .xalign(0.0)
-                .wrap(true)
-                .build();
+            let priority = gtk::Label::builder().label(&text).xalign(0.0).build();
             priority.add_css_class("caption");
             priority.add_css_class("chip");
             if p == 5 {
