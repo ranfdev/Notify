@@ -74,14 +74,26 @@ template $NotifyWindow : Adw.ApplicationWindow {
             Adw.StatusPage welcome_view {
               title: "Notify";
               description: "Subscribe to one topic and start listening for notifications";
-              child: Gtk.Button {
-                label: "Subscribe To Topic";
-                clicked => $show_add_topic() swapped;
-                halign: center;
-                styles [
-                  "suggested-action",
-                  "pill"
-                ]
+              child: Gtk.Box {
+                orientation: vertical;
+                spacing: 8;
+                Gtk.Button {
+                  label: "Subscribe To Topic";
+                  clicked => $show_add_topic() swapped;
+                  halign: center;
+                  styles [
+                    "suggested-action",
+                    "pill"
+                  ]
+                }
+                Gtk.Button {
+                  label: "Discover Integrations";
+                  clicked => $discover_integrations() swapped;
+                  halign: center;
+                  styles [
+                    "pill"
+                  ]
+                }
               };
             }
             ScrolledWindow list_view {

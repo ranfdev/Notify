@@ -139,6 +139,14 @@ mod imp {
                 None
             });
         }
+        #[template_callback]
+        fn discover_integrations(&self, _btn: &gtk::Button) {
+            gtk::UriLauncher::new("https://docs.ntfy.sh/integrations/").launch(
+                Some(&self.obj().clone()),
+                gio::Cancellable::NONE,
+                |_| {},
+            );
+        }
     }
 
     #[glib::object_subclass]
