@@ -14,18 +14,18 @@ mod imp {
     impl ObjectSubclass for MessageRow {
         const NAME: &'static str = "MessageRow";
         type Type = super::MessageRow;
-        type ParentType = adw::Bin;
+        type ParentType = gtk::Grid;
     }
 
     impl ObjectImpl for MessageRow {}
 
     impl WidgetImpl for MessageRow {}
-    impl BinImpl for MessageRow {}
+    impl GridImpl for MessageRow {}
 }
 
 glib::wrapper! {
     pub struct MessageRow(ObjectSubclass<imp::MessageRow>)
-        @extends gtk::Widget, adw::Bin;
+        @extends gtk::Widget, gtk::Grid;
 }
 
 impl MessageRow {
@@ -35,7 +35,12 @@ impl MessageRow {
         this
     }
     fn build_ui(&self, msg: models::Message) {
-        let top_box = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        self.set_margin_top(8);
+        self.set_margin_bottom(8);
+        self.set_margin_start(8);
+        self.set_margin_end(8);
+        self.set_column_spacing(8);
+        self.set_row_spacing(8);
 
         let time = gtk::Label::builder()
             .label(
@@ -48,8 +53,7 @@ impl MessageRow {
             .wrap(true)
             .build();
         time.add_css_class("caption");
-
-        top_box.append(&time);
+        self.attach(&time, 0, 0, 1, 1);
 
         if let Some(p) = msg.priority {
             let text = format!(
@@ -76,19 +80,10 @@ impl MessageRow {
             } else if p == 4 {
                 priority.add_css_class("chip--warning")
             }
-            top_box.append(&priority);
+            priority.set_halign(gtk::Align::End);
+            self.attach(&priority, 1, 0, 2, 1);
         }
 
-        let b = gtk::Box::builder()
-            .orientation(gtk::Orientation::Vertical)
-            .spacing(8)
-            .margin_top(8)
-            .margin_bottom(8)
-            .margin_start(8)
-            .margin_end(8)
-            .build();
-
-        b.append(&top_box);
         if let Some(title) = msg.display_title() {
             let label = gtk::Label::builder()
                 .label(&title)
@@ -98,7 +93,7 @@ impl MessageRow {
                 .selectable(true)
                 .build();
             label.add_css_class("heading");
-            b.append(&label);
+            self.attach(&label, 0, 1, 3, 1);
         }
 
         if let Some(message) = msg.display_message() {
@@ -108,19 +103,25 @@ impl MessageRow {
                 .xalign(0.0)
                 .wrap(true)
                 .selectable(true)
+                .hexpand(true)
                 .build();
-            b.append(&label);
+            self.attach(&label, 0, 2, 3, 1);
         }
 
         if msg.actions.len() > 0 {
-            let action_btns = gtk::Box::builder().spacing(8).build();
+            let action_btns = gtk::FlowBox::builder()
+                .row_spacing(8)
+                .column_spacing(8)
+                .homogeneous(true)
+                .selection_mode(gtk::SelectionMode::None)
+                .build();
 
             for a in msg.actions {
                 let btn = self.build_action_btn(a);
                 action_btns.append(&btn);
             }
 
-            b.append(&action_btns);
+            self.attach(&action_btns, 0, 3, 3, 1);
         }
         if msg.tags.len() > 0 {
             let mut tags_text = String::from("tags: ");
@@ -131,10 +132,8 @@ impl MessageRow {
                 .wrap(true)
                 .wrap_mode(gtk::pango::WrapMode::WordChar)
                 .build();
-            b.append(&tags);
+            self.attach(&tags, 0, 4, 3, 1);
         }
-
-        self.set_child(Some(&b));
     }
     fn build_action_btn(&self, action: models::Action) -> gtk::Button {
         let btn = gtk::Button::new();
