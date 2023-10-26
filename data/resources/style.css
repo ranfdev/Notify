@@ -40,6 +40,11 @@ button.small {
   font-size: 0.8rem;
 }
 
+.chip.circular {
+  border-radius: 24px;
+  padding: 2px 2px;
+}
+
 .sourceview {
   padding: 4px 8px;
 }

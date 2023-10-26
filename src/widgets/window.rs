@@ -616,7 +616,7 @@ impl NotifyWindow {
     }
 
     fn build_subscription_ui(sub: &Subscription) -> impl glib::IsA<gtk::Widget> {
-        let b = gtk::Box::builder().spacing(8).build();
+        let b = gtk::Box::builder().spacing(4).build();
 
         let label = gtk::Label::builder()
             .xalign(0.0)
@@ -629,8 +629,9 @@ impl NotifyWindow {
             .sync_create()
             .build();
 
-        let counter_chip = Self::build_chip("1+");
+        let counter_chip = Self::build_chip("●");
         counter_chip.add_css_class("chip--info");
+        counter_chip.add_css_class("circular");
         counter_chip.set_visible(false);
         let counter_chip_clone = counter_chip.clone();
         sub.connect_unread_count_notify(move |sub| {
