@@ -1,8 +1,13 @@
+use std::io::Read;
+
 use adw::prelude::*;
 use adw::subclass::prelude::*;
 use chrono::NaiveDateTime;
-use gtk::glib;
+use gdk_pixbuf::Pixbuf;
+use gtk::gdk_pixbuf;
+use gtk::{gdk, gio, glib};
 use ntfy_daemon::models;
+use tracing::error;
 
 mod imp {
     use super::*;
@@ -41,6 +46,7 @@ impl MessageRow {
         self.set_margin_end(8);
         self.set_column_spacing(8);
         self.set_row_spacing(8);
+        let mut row = 0;
 
         let time = gtk::Label::builder()
             .label(
@@ -51,7 +57,7 @@ impl MessageRow {
             .xalign(0.0)
             .build();
         time.add_css_class("caption");
-        self.attach(&time, 0, 0, 1, 1);
+        self.attach(&time, 0, row, 1, 1);
 
         if let Some(p) = msg.priority {
             let text = format!(
@@ -76,6 +82,7 @@ impl MessageRow {
             priority.set_halign(gtk::Align::End);
             self.attach(&priority, 1, 0, 2, 1);
         }
+        row += 1;
 
         if let Some(title) = msg.display_title() {
             let label = gtk::Label::builder()
@@ -86,7 +93,8 @@ impl MessageRow {
                 .selectable(true)
                 .build();
             label.add_css_class("heading");
-            self.attach(&label, 0, 1, 3, 1);
+            self.attach(&label, 0, row, 3, 1);
+            row += 1;
         }
 
         if let Some(message) = msg.display_message() {
@@ -98,7 +106,15 @@ impl MessageRow {
                 .selectable(true)
                 .hexpand(true)
                 .build();
-            self.attach(&label, 0, 2, 3, 1);
+            self.attach(&label, 0, row, 3, 1);
+            row += 1;
+        }
+
+        if let Some(attachment) = msg.attachment {
+            if attachment.is_image() {
+                self.attach(&self.build_image(attachment.url.to_string()), 0, row, 3, 1);
+                row += 1;
+            }
         }
 
         if msg.actions.len() > 0 {
@@ -114,7 +130,8 @@ impl MessageRow {
                 action_btns.append(&btn);
             }
 
-            self.attach(&action_btns, 0, 3, 3, 1);
+            self.attach(&action_btns, 0, row, 3, 1);
+            row += 1;
         }
         if msg.tags.len() > 0 {
             let mut tags_text = String::from("tags: ");
@@ -125,8 +142,61 @@ impl MessageRow {
                 .wrap(true)
                 .wrap_mode(gtk::pango::WrapMode::WordChar)
                 .build();
-            self.attach(&tags, 0, 4, 3, 1);
+            self.attach(&tags, 0, row, 3, 1);
         }
+    }
+    fn build_image(&self, url: String) -> gtk::Picture {
+        let (tx, rx) = glib::MainContext::channel(Default::default());
+        gio::spawn_blocking(move || {
+            let path = glib::user_cache_dir().join("com.ranfdev.Notify").join(&url);
+            let bytes = if path.exists() {
+                match std::fs::read(&path) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        error!(error = %e, path = %path.display(), "reading image from disk");
+                        return glib::ControlFlow::Break;
+                    }
+                }
+            } else {
+                let res = match ureq::get(&url).call() {
+                    Ok(res) => res,
+                    Err(e) => {
+                        error!(error = %e, "fetching image");
+                        return glib::ControlFlow::Break;
+                    }
+                };
+                let mut bytes = vec![];
+                if let Err(e) = res
+                    .into_reader()
+                    .take(5 * 1_000_000) // 5 MB
+                    .read_to_end(&mut bytes)
+                {
+                    error!(error = %e, "reading image data");
+                    return glib::ControlFlow::Break;
+                }
+                bytes
+            };
+
+            tx.send(glib::Bytes::from_owned(bytes)).unwrap();
+            glib::ControlFlow::Break
+        });
+        let picture = gtk::Picture::new();
+        picture.set_can_shrink(true);
+        picture.set_height_request(350);
+        let picturec = picture.clone();
+        rx.attach(Default::default(), move |b| {
+            let stream = gio::MemoryInputStream::from_bytes(&b);
+            let pixbuf = match Pixbuf::from_stream(&stream, gio::Cancellable::NONE) {
+                Ok(res) => res,
+                Err(e) => {
+                    error!(error = %e, "parsing image contents");
+                    return glib::ControlFlow::Break;
+                }
+            };
+            picturec.set_paintable(Some(&gdk::Texture::for_pixbuf(&pixbuf)));
+            glib::ControlFlow::Break
+        });
+        picture
     }
     fn build_action_btn(&self, action: models::Action) -> gtk::Button {
         let btn = gtk::Button::new();

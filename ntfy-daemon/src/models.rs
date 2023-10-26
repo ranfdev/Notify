@@ -36,9 +36,9 @@ pub struct Message {
     pub tags: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub priority: Option<i8>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
-    pub attach: Vec<String>,
+    pub attachment: Option<Attachment>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -107,6 +107,28 @@ pub struct MinMessage {
     pub id: String,
     pub topic: String,
     pub time: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Attachment {
+    pub name: String,
+    pub url: url::Url,
+    #[serde(rename = "type")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub atype: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expires: Option<usize>,
+}
+
+impl Attachment {
+    pub fn is_image(&self) -> bool {
+        let Some(ext) = self.name.split('.').last() else {
+            return false;
+        };
+        ["jpeg", "jpg", "png", "webp", "gif"].contains(&ext)
+    }
 }
 
 #[derive(Clone, Debug)]
