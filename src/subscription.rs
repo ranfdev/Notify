@@ -9,7 +9,7 @@ use glib::Properties;
 use gtk::{gio, glib};
 use ntfy_daemon::models;
 use ntfy_daemon::ntfy_capnp::{output_channel, subscription, watch_handle, Status};
-use tracing::{debug, debug_span, error, instrument};
+use tracing::{debug, error, instrument};
 
 struct TopicWatcher {
     sub: glib::WeakRef<Subscription>,
@@ -217,8 +217,7 @@ impl Subscription {
         val.set_display_name(&*imp.display_name.borrow());
         val.set_read_until(imp.read_until.get());
         Promise::from_future(async move {
-            let _span = debug_span!("send_updated_info").entered();
-            debug!("sending");
+            debug!("sending update_info");
             req.send().promise.await?;
             Ok(())
         })
@@ -233,12 +232,8 @@ impl Subscription {
     }
     fn update_unread_count(&self) {
         let imp = self.imp();
-        if let Some(last) = Self::last_message(&imp.messages) {
-            if last.time > imp.read_until.get() {
-                imp.unread_count.set(1);
-            } else {
-                imp.unread_count.set(0);
-            }
+        if Self::last_message(&imp.messages).map(|last| last.time) > Some(imp.read_until.get()) {
+            imp.unread_count.set(1);
         } else {
             imp.unread_count.set(0);
         }
@@ -256,13 +251,12 @@ impl Subscription {
     }
     pub fn flag_all_as_read(&self) -> Promise<(), capnp::Error> {
         let imp = self.imp();
-        let Some(last) = Self::last_message(&imp.messages) else {
+        let Some(value) = Self::last_message(&imp.messages)
+            .map(|last| last.time)
+            .filter(|time| *time > self.imp().read_until.get())
+        else {
             return Promise::ok(());
         };
-        let value = last.time;
-        if self.imp().read_until.get() == value {
-            return Promise::ok(());
-        }
 
         let this = self.clone();
         Promise::from_future(async move {
@@ -276,14 +270,15 @@ impl Subscription {
     }
     pub fn publish_msg(&self, mut msg: models::Message) -> Promise<(), capnp::Error> {
         let imp = self.imp();
+        let json = {
+            msg.topic = self.topic();
+            serde_json::to_string(&msg).map_err(|e| capnp::Error::failed(e.to_string()))
+        };
         let mut req = imp.client.get().unwrap().publish_request();
-        msg.topic = self.topic();
-        let json = serde_json::to_string(&msg).map_err(|e| capnp::Error::failed(e.to_string()));
         req.get().set_message(&pry!(json));
 
         Promise::from_future(async move {
-            let _span = debug_span!("publish").entered();
-            debug!("sending");
+            debug!("sending publish");
             req.send().promise.await?;
             Ok(())
         })
@@ -294,8 +289,7 @@ impl Subscription {
         let req = imp.client.get().unwrap().clear_notifications_request();
         let this = self.clone();
         Promise::from_future(async move {
-            let _span = debug_span!("clear_notifications").entered();
-            debug!("sending");
+            debug!("sending clear_notifications");
             req.send().promise.await?;
             this.imp().messages.remove_all();
             Ok(())

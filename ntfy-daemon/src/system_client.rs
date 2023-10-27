@@ -63,7 +63,7 @@ impl output_channel::Server for NotifyForwarder {
         let already_stored: bool = {
             // If this fails parsing, the message is not valid at all.
             // The server is probably misbehaving.
-            let min_message: MinMessage = pry!(serde_json::from_str(&message)
+            let min_message: MinMessage = pry!(serde_json::from_str(message)
                 .map_err(|e| Error::InvalidMinMessage(message.to_string(), e)));
             let model = self.model.borrow();
             match self.env.db.insert_message(&model.server, message) {
@@ -83,20 +83,15 @@ impl output_channel::Server for NotifyForwarder {
             // Show notification
             // Our priority is to show notifications. If anything fails, panic.
             if !{ self.model.borrow().muted } {
-                let msg: Message = pry!(serde_json::from_str(&message)
+                let msg: Message = pry!(serde_json::from_str(message)
                     .map_err(|e| Error::InvalidMessage(message.to_string(), e)));
                 let np = self.env.proxy.clone();
 
-                let title = { msg.notification_title(&*self.model.borrow()) };
+                let title = { msg.notification_title(&self.model.borrow()) };
 
                 let n = models::Notification {
-                    title: title.to_string(),
-                    body: msg
-                        .display_message()
-                        .as_ref()
-                        .map(|x| x.as_str())
-                        .unwrap_or("")
-                        .to_string(),
+                    title,
+                    body: msg.display_message().as_deref().unwrap_or("").to_string(),
                     actions: msg.actions,
                 };
 
@@ -380,7 +375,7 @@ impl SystemNotifier {
     pub fn watch_subscribed(&mut self) -> Promise<(), capnp::Error> {
         let f: Vec<_> = pry!(self.env.db.list_subscriptions())
             .into_iter()
-            .map(|m| self.watch(m.clone()))
+            .map(|m| self.watch(m))
             .collect();
         Promise::from_future(async move {
             join_all(f.into_iter().map(|x| async move {
@@ -434,7 +429,7 @@ impl system_notifier::Server for SystemNotifier {
             pry!(self
                 .env
                 .db
-                .remove_subscription(&server, &topic)
+                .remove_subscription(server, topic)
                 .map_err(|e| capnp::Error::failed(e.to_string())));
             info!(server, topic, "Unsubscribed");
         }

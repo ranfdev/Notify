@@ -26,11 +26,9 @@ impl Db {
         Ok(this)
     }
     fn migrate(&mut self) -> Result<()> {
-        {
-            self.conn
-                .borrow()
-                .execute_batch(include_str!("./migrations/00.sql"))?
-        };
+        self.conn
+            .borrow()
+            .execute_batch(include_str!("./migrations/00.sql"))?;
         Ok(())
     }
     fn get_or_insert_server(&mut self, server: &str) -> Result<i64> {
@@ -90,9 +88,9 @@ impl Db {
         ",
         )?;
         let msgs: Result<Vec<String>, _> = stmt
-            .query_map(params![server, topic, since], |row| Ok(row.get(0)?))?
+            .query_map(params![server, topic, since], |row| row.get(0))?
             .collect();
-        Ok(msgs?)
+        msgs
     }
     pub fn insert_subscription(&mut self, sub: models::Subscription) -> Result<(), Error> {
         let server_id = self.get_or_insert_server(&sub.server)?;
@@ -116,7 +114,7 @@ impl Db {
             WHERE server = ?1 AND topic = ?2",
             params![server_id, topic],
         )?;
-        if res <= 0 {
+        if res == 0 {
             return Err(Error::SubscriptionNotFound("removing subscription".into()));
         }
         Ok(())
@@ -162,7 +160,7 @@ impl Db {
                 sub.topic,
             ],
         )?;
-        if res <= 0 {
+        if res == 0 {
             return Err(Error::SubscriptionNotFound("updating subscription".into()));
         }
         info!(info = ?sub, "stored subscription info");
@@ -184,7 +182,7 @@ impl Db {
             ",
             params![server_id, topic, value],
         )?;
-        if res <= 0 {
+        if res == 0 {
             return Err(Error::SubscriptionNotFound("updating read_until".into()));
         }
         Ok(())
@@ -198,7 +196,7 @@ impl Db {
             ",
             params![server_id, topic],
         )?;
-        if res <= 0 {
+        if res == 0 {
             return Err(Error::SubscriptionNotFound("deleting messages".into()));
         }
         Ok(())

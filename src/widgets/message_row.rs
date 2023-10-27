@@ -145,39 +145,29 @@ impl MessageRow {
             self.attach(&tags, 0, row, 3, 1);
         }
     }
+    fn fetch_image_bytes(url: &str) -> anyhow::Result<Vec<u8>> {
+        let path = glib::user_cache_dir().join("com.ranfdev.Notify").join(&url);
+        let bytes = if path.exists() {
+            std::fs::read(&path)?
+        } else {
+            let mut bytes = vec![];
+            ureq::get(&url)
+                .call()?
+                .into_reader()
+                .take(5 * 1_000_000) // 5 MB
+                .read_to_end(&mut bytes)?;
+            bytes
+        };
+        Ok(bytes)
+    }
     fn build_image(&self, url: String) -> gtk::Picture {
         let (tx, rx) = glib::MainContext::channel(Default::default());
         gio::spawn_blocking(move || {
-            let path = glib::user_cache_dir().join("com.ranfdev.Notify").join(&url);
-            let bytes = if path.exists() {
-                match std::fs::read(&path) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        error!(error = %e, path = %path.display(), "reading image from disk");
-                        return glib::ControlFlow::Break;
-                    }
-                }
-            } else {
-                let res = match ureq::get(&url).call() {
-                    Ok(res) => res,
-                    Err(e) => {
-                        error!(error = %e, "fetching image");
-                        return glib::ControlFlow::Break;
-                    }
-                };
-                let mut bytes = vec![];
-                if let Err(e) = res
-                    .into_reader()
-                    .take(5 * 1_000_000) // 5 MB
-                    .read_to_end(&mut bytes)
-                {
-                    error!(error = %e, "reading image data");
-                    return glib::ControlFlow::Break;
-                }
-                bytes
-            };
-
-            tx.send(glib::Bytes::from_owned(bytes)).unwrap();
+            if let Err(e) =
+                Self::fetch_image_bytes(&url).map(|bytes| tx.send(glib::Bytes::from_owned(bytes)))
+            {
+                error!(error = %e)
+            }
             glib::ControlFlow::Break
         });
         let picture = gtk::Picture::new();

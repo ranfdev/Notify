@@ -148,7 +148,7 @@ impl Subscription {
         let mut url = url::Url::parse(server)?;
         url.path_segments_mut()
             .map_err(|_| url::ParseError::RelativeUrlWithCannotBeABaseBase)?
-            .push(&topic)
+            .push(topic)
             .push("json");
         url.query_pairs_mut()
             .append_pair("since", &since.to_string());
@@ -162,7 +162,7 @@ impl Subscription {
         if let Err(e) = Self::build_url(&self.server, &self.topic, 0) {
             errs.push(e);
         };
-        if errs.len() > 0 {
+        if !errs.is_empty() {
             return Err(errs);
         }
         Ok(self)

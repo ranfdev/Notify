@@ -346,7 +346,7 @@ impl NotifyWindow {
             .bind_model(Some(&imp.subscription_list_model), |obj| {
                 let sub = obj.downcast_ref::<Subscription>().unwrap();
 
-                Self::build_subscription_ui(&sub).upcast()
+                Self::build_subscription_row(&sub).upcast()
             });
 
         let this = self.clone();
@@ -445,7 +445,7 @@ impl NotifyWindow {
         chip
     }
 
-    fn build_subscription_ui(sub: &Subscription) -> impl glib::IsA<gtk::Widget> {
+    fn build_subscription_row(sub: &Subscription) -> impl glib::IsA<gtk::Widget> {
         let b = gtk::Box::builder().spacing(4).build();
 
         let label = gtk::Label::builder()
