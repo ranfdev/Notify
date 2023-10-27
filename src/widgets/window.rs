@@ -381,10 +381,19 @@ impl NotifyWindow {
     fn selected_subscription_changed(&self, sub: Option<&Subscription>) {
         let imp = self.imp();
         self.update_banner(sub);
+        let this = self.clone();
+        let set_sensitive = move |b| {
+            let imp = this.imp();
+            imp.subscription_menu_btn.set_sensitive(b);
+            imp.code_btn.set_sensitive(b);
+            imp.send_btn.set_sensitive(b);
+            imp.entry.set_sensitive(b);
+        };
         if let Some((sub, id)) = imp.banner_binding.take() {
             sub.disconnect(id);
         }
         if let Some(sub) = sub {
+            set_sensitive(true);
             imp.navigation_split_view.set_show_content(true);
             imp.message_list
                 .bind_model(Some(&sub.imp().messages), move |obj| {
@@ -393,10 +402,6 @@ impl NotifyWindow {
 
                     MessageRow::new(msg.clone()).upcast()
                 });
-            imp.subscription_menu_btn.set_sensitive(true);
-            imp.send_btn.set_sensitive(true);
-            imp.code_btn.set_sensitive(true);
-            imp.entry.set_sensitive(true);
 
             let this = self.clone();
             imp.banner_binding.set(Some((
@@ -411,12 +416,9 @@ impl NotifyWindow {
                 this.flag_read();
             });
         } else {
+            set_sensitive(false);
             imp.message_list
                 .bind_model(gio::ListModel::NONE, |_| adw::Bin::new().into());
-            imp.subscription_menu_btn.set_sensitive(false);
-            imp.code_btn.set_sensitive(false);
-            imp.send_btn.set_sensitive(false);
-            imp.entry.set_sensitive(false);
         }
     }
     fn flag_read(&self) {
