@@ -22,9 +22,9 @@ impl output_channel::Server for TopicWatcher {
     ) -> capnp::capability::Promise<(), capnp::Error> {
         if let Some(sub) = self.sub.upgrade() {
             let request = pry!(params.get());
-            let message = pry!(request.get_message());
+            let message = pry!(pry!(request.get_message()).to_str());
 
-            let msg: models::Message = serde_json::from_str(&message).unwrap();
+            let msg: models::Message = serde_json::from_str(message).unwrap();
             sub.imp().messages.append(&glib::BoxedAnyObject::new(msg));
             sub.update_unread_count();
             Promise::ok(())
@@ -175,11 +175,11 @@ impl Subscription {
             let info = req_info.send().promise.await?;
             let info = info.get()?;
             this.init_info(
-                info.get_topic()?,
-                info.get_server()?,
+                info.get_topic()?.to_str()?,
+                info.get_server()?.to_str()?,
                 info.get_muted(),
                 info.get_read_until(),
-                info.get_display_name()?,
+                info.get_display_name()?.to_str()?,
             );
 
             let message_stream = req_messages.send().promise.await?;
@@ -214,7 +214,7 @@ impl Subscription {
         let mut req = imp.client.get().unwrap().update_info_request();
         let mut val = pry!(req.get().get_value());
         val.set_muted(imp.muted.get());
-        val.set_display_name(&*imp.display_name.borrow());
+        val.set_display_name(imp.display_name.borrow().as_str().into());
         val.set_read_until(imp.read_until.get());
         Promise::from_future(async move {
             debug!("sending update_info");
@@ -275,7 +275,7 @@ impl Subscription {
             serde_json::to_string(&msg).map_err(|e| capnp::Error::failed(e.to_string()))
         };
         let mut req = imp.client.get().unwrap().publish_request();
-        req.get().set_message(&pry!(json));
+        req.get().set_message(pry!(json).as_str().into());
 
         Promise::from_future(async move {
             debug!("sending publish");

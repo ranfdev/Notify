@@ -57,7 +57,7 @@ impl output_channel::Server for NotifyForwarder {
         _results: output_channel::SendMessageResults,
     ) -> capnp::capability::Promise<(), capnp::Error> {
         let request = pry!(params.get());
-        let message = pry!(request.get_message());
+        let message = pry!(pry!(request.get_message()).to_str());
 
         // Store in database
         let already_stored: bool = {
@@ -104,7 +104,7 @@ impl output_channel::Server for NotifyForwarder {
                 let watching = watching.borrow();
                 let futs = watching.iter().map(|(_id, w)| {
                     let mut req = w.send_message_request();
-                    req.get().set_message(message);
+                    req.get().set_message(message.into());
                     async move {
                         if let Err(e) = req.send().promise.await {
                             error!(error = ?e, "Error forwarding");
@@ -241,7 +241,7 @@ impl subscription::Server for SubscriptionImpl {
 
         let futs = msgs.into_iter().map(move |msg| {
             let mut req = watcher.send_message_request();
-            req.get().set_message(&msg);
+            req.get().set_message(msg.as_str().into());
             req.send().promise
         });
 
@@ -268,7 +268,7 @@ impl subscription::Server for SubscriptionImpl {
         params: subscription::PublishParams,
         _results: subscription::PublishResults,
     ) -> capnp::capability::Promise<(), capnp::Error> {
-        let msg = pry!(pry!(params.get()).get_message());
+        let msg = pry!(pry!(pry!(params.get()).get_message()).to_str());
         let fut = self._publish(msg);
 
         Promise::from_future(async move {
@@ -283,9 +283,9 @@ impl subscription::Server for SubscriptionImpl {
     ) -> capnp::capability::Promise<(), capnp::Error> {
         let mut res = results.get();
         let model = self.model.borrow();
-        res.set_server(&model.server);
-        res.set_display_name(&model.display_name);
-        res.set_topic(&model.topic);
+        res.set_server(model.server.as_str().into());
+        res.set_display_name(model.display_name.as_str().into());
+        res.set_topic(model.topic.as_str().into());
         res.set_muted(model.muted);
         res.set_read_until(model.read_until);
         Promise::ok(())
@@ -297,7 +297,7 @@ impl subscription::Server for SubscriptionImpl {
     ) -> capnp::capability::Promise<(), capnp::Error> {
         let info = pry!(pry!(params.get()).get_value());
         let mut model = self.model.borrow_mut();
-        model.display_name = pry!(info.get_display_name()).to_string();
+        model.display_name = pry!(pry!(info.get_display_name()).to_string());
         model.muted = info.get_muted();
         model.read_until = info.get_read_until();
         pry!(self.env.db.update_subscription(model.clone()));
@@ -395,8 +395,8 @@ impl system_notifier::Server for SystemNotifier {
         params: system_notifier::SubscribeParams,
         mut results: system_notifier::SubscribeResults,
     ) -> capnp::capability::Promise<(), capnp::Error> {
-        let topic = pry!(pry!(params.get()).get_topic());
-        let server: &str = pry!(pry!(params.get()).get_server());
+        let topic = pry!(pry!(pry!(params.get()).get_topic()).to_str());
+        let server: &str = pry!(pry!(pry!(params.get()).get_server()).to_str());
 
         let subscription = pry!(models::Subscription::builder(topic.to_owned())
             .server(server.to_string())
@@ -419,8 +419,8 @@ impl system_notifier::Server for SystemNotifier {
         params: system_notifier::UnsubscribeParams,
         _results: system_notifier::UnsubscribeResults,
     ) -> capnp::capability::Promise<(), capnp::Error> {
-        let topic = pry!(pry!(params.get()).get_topic());
-        let server = pry!(pry!(params.get()).get_server());
+        let topic = pry!(pry!(pry!(params.get()).get_topic()).to_str());
+        let server = pry!(pry!(pry!(params.get()).get_server()).to_str());
         {
             self.watching.borrow_mut().remove(&WatchKey {
                 server: server.to_string(),

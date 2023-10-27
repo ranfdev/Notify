@@ -194,7 +194,7 @@ impl TopicListener {
                 Event::Message { .. } => {
                     debug!("message event");
                     let mut req = self.output_channel.send_message_request();
-                    req.get().set_message(&msg);
+                    req.get().set_message(msg.as_str().into());
                     req.send().promise.await?;
                 }
                 Event::KeepAlive { .. } => {

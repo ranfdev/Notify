@@ -288,8 +288,8 @@ impl NotifyWindow {
     fn add_subscription(&self, sub: models::Subscription) {
         let mut req = self.notifier().subscribe_request();
 
-        req.get().set_server(&sub.server);
-        req.get().set_topic(&sub.topic);
+        req.get().set_server(sub.server.as_str().into());
+        req.get().set_topic(sub.topic.as_str().into());
         let res = req.send();
         let this = self.clone();
         self.spawn_with_near_toast(async move {
@@ -310,11 +310,10 @@ impl NotifyWindow {
 
     fn unsubscribe(&self) {
         let mut req = self.notifier().unsubscribe_request();
-
         let sub = self.selected_subscription().unwrap();
 
-        req.get().set_server(&sub.server());
-        req.get().set_topic(&sub.topic());
+        req.get().set_server(sub.server().as_str().into());
+        req.get().set_topic(sub.topic().as_str().into());
 
         let res = req.send();
         let this = self.clone();
