@@ -1,6 +1,8 @@
 use std::collections::HashMap;
+use std::pin::Pin;
 use std::sync::OnceLock;
 
+use futures::stream::Stream;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
@@ -315,4 +317,8 @@ pub struct Notification {
 
 pub trait NotificationProxy: Sync + Send {
     fn send(&self, n: Notification) -> anyhow::Result<()>;
+}
+
+pub trait NetworkMonitorProxy: Sync + Send {
+    fn listen(&self) -> Pin<Box<dyn Stream<Item = ()>>>;
 }

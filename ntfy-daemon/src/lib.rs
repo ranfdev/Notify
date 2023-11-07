@@ -14,7 +14,7 @@ pub struct SharedEnv {
     db: message_repo::Db,
     proxy: Arc<dyn models::NotificationProxy>,
     http: reqwest::Client,
-    network: Arc<ashpd::desktop::network_monitor::NetworkMonitor<'static>>,
+    network: Arc<dyn models::NetworkMonitorProxy>,
 }
 
 #[derive(thiserror::Error, Debug)]

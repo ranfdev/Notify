@@ -1,8 +1,12 @@
+use std::cell::Cell;
 use std::path::Path;
 use std::path::PathBuf;
+use std::pin::Pin;
+use std::rc::Rc;
 
 use adw::subclass::prelude::*;
 use capnp_rpc::{rpc_twoparty_capnp, twoparty, RpcSystem};
+use futures::stream::Stream;
 use futures::AsyncReadExt;
 use gettextrs::gettext;
 use gio::SocketClient;
@@ -242,6 +246,11 @@ impl NotifyApplication {
         let dbpath = glib::user_data_dir().join("com.ranfdev.Notify.sqlite");
         info!(database_path = %dbpath.display());
 
+        // Here I'm sending notifications to the desktop environment and listening for network changes.
+        // This should have been inside ntfy-daemon, but using portals from another thread causes the error
+        // `Invalid client serial` and it's broken.
+        // Until https://github.com/flatpak/xdg-dbus-proxy/issues/46 is solved, I have to handle these things
+        // in the main thread. Uff.
         let (tx, rx) = glib::MainContext::channel(Default::default());
         let app = self.clone();
         rx.attach(None, move |n: models::Notification| {
@@ -268,17 +277,39 @@ impl NotifyApplication {
             glib::ControlFlow::Continue
         });
 
-        struct Proxy(glib::Sender<models::Notification>);
-        impl models::NotificationProxy for Proxy {
+        struct Proxies {
+            notification: glib::Sender<models::Notification>,
+        }
+        impl models::NotificationProxy for Proxies {
             fn send(&self, n: models::Notification) -> anyhow::Result<()> {
-                self.0.send(n)?;
+                self.notification.send(n)?;
                 Ok(())
             }
         }
+        impl models::NetworkMonitorProxy for Proxies {
+            fn listen(&self) -> Pin<Box<dyn Stream<Item = ()>>> {
+                let (tx, rx) = async_channel::bounded(1);
+                let mut prev_available = Rc::new(Cell::new(false));
+
+                gio::NetworkMonitor::default().connect_network_changed(move |_, available| {
+                    dbg!("sent", available);
+                    if available && !prev_available.get() {
+                        if let Err(e) = tx.send_blocking(()) {
+                            warn!(error = %e);
+                        }
+                    }
+                    prev_available.replace(available);
+                });
+
+                Box::pin(rx)
+            }
+        }
+        let proxies = std::sync::Arc::new(Proxies { notification: tx });
         ntfy_daemon::system_client::start(
             socket_path.to_owned(),
             dbpath.to_str().unwrap(),
-            std::sync::Arc::new(Proxy(tx)),
+            proxies.clone(),
+            proxies,
         )
         .unwrap();
         self.imp().hold_guard.set(self.hold()).unwrap();

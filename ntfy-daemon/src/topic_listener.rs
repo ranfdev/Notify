@@ -2,7 +2,6 @@ use std::ops::ControlFlow;
 use std::sync::Arc;
 use std::time::Duration;
 
-use ashpd::desktop::network_monitor::NetworkMonitor;
 use futures::prelude::*;
 use reqwest::header::HeaderValue;
 use serde::{Deserialize, Serialize};
@@ -141,21 +140,14 @@ impl TopicListener {
     }
 
     async fn reload_on_network_change(
-        monitor: Arc<NetworkMonitor<'static>>,
+        monitor: Arc<dyn models::NetworkMonitorProxy>,
         tx: mpsc::Sender<ControlFlow<()>>,
     ) -> anyhow::Result<()> {
-        let mut prev_available = false;
-
-        loop {
-            let _ = monitor.receive_changed().await?;
-            let available = monitor.is_available().await?;
-            if available && !prev_available {
-                if let Err(e) = tx.send(ControlFlow::Continue(())).await {
-                    return Err(e.into());
-                }
-            }
-            prev_available = available;
+        let mut m = monitor.listen();
+        while let Some(_) = m.next().await {
+            tx.send(ControlFlow::Continue(())).await?;
         }
+        Ok(())
     }
 
     fn send_current_status(&mut self) -> impl Future<Output = anyhow::Result<()>> {

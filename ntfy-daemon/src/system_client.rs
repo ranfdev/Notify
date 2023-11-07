@@ -5,7 +5,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::{collections::HashMap, hash::Hash};
 
-use ashpd::desktop::network_monitor::NetworkMonitor;
 use capnp::capability::Promise;
 use capnp_rpc::{pry, rpc_twoparty_capnp, twoparty, RpcSystem};
 use futures::future::join_all;
@@ -343,7 +342,7 @@ impl SystemNotifier {
     pub fn new(
         dbpath: &str,
         notification_proxy: Arc<dyn models::NotificationProxy>,
-        network: Arc<NetworkMonitor<'static>>,
+        network: Arc<dyn models::NetworkMonitorProxy>,
     ) -> Self {
         Self {
             watching: Rc::new(RefCell::new(HashMap::new())),
@@ -457,12 +456,12 @@ pub fn start(
     socket_path: std::path::PathBuf,
     dbpath: &str,
     notification_proxy: Arc<dyn models::NotificationProxy>,
+    network_proxy: Arc<dyn models::NetworkMonitorProxy>,
 ) -> anyhow::Result<()> {
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
 
-    let network_monitor = rt.block_on(async move { NetworkMonitor::new().await.unwrap() });
     let listener = rt.block_on(async move {
         let _ = std::fs::remove_file(&socket_path);
         UnixListener::bind(&socket_path).unwrap()
@@ -471,8 +470,7 @@ pub fn start(
     let dbpath = dbpath.to_owned();
     let f = move || {
         let local = tokio::task::LocalSet::new();
-        let mut system_notifier =
-            SystemNotifier::new(&dbpath, notification_proxy, Arc::new(network_monitor));
+        let mut system_notifier = SystemNotifier::new(&dbpath, notification_proxy, network_proxy);
         local.spawn_local(async move {
             system_notifier.watch_subscribed().await.unwrap();
             let system_client: system_notifier::Client = capnp_rpc::new_client(system_notifier);
