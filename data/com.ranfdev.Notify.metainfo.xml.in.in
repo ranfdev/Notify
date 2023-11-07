@@ -24,6 +24,17 @@
   <url type="bugtracker">https://github.com/ranfdev/Notify/issues</url>
   <content_rating type="oars-1.0" />
   <releases>
+    <release version="0.1.2" date="2023-11-07">
+      <ul>
+        <li>Introduced dialog to write advanced messages</li>
+        <li>Automatic download of attached images</li>
+        <li>Introduced support for action buttons in the notifications</li>
+        <li>Improved performance of the message list layout</li>
+        <li>Improved design for status chips</li>
+        <li>Improved design for the message bar</li>
+        <li>Various bug fixes</li>
+      </ul>
+    </release>
     <release version="0.1.1" date="2023-10-24" />
     <release version="0.1.0" date="2023-10-13" />
   </releases>
