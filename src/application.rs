@@ -281,10 +281,9 @@ impl NotifyApplication {
         impl models::NetworkMonitorProxy for Proxies {
             fn listen(&self) -> Pin<Box<dyn Stream<Item = ()>>> {
                 let (tx, rx) = async_channel::bounded(1);
-                let mut prev_available = Rc::new(Cell::new(false));
+                let prev_available = Rc::new(Cell::new(false));
 
                 gio::NetworkMonitor::default().connect_network_changed(move |_, available| {
-                    dbg!("sent", available);
                     if available && !prev_available.get() {
                         if let Err(e) = tx.send_blocking(()) {
                             warn!(error = %e);
