@@ -119,11 +119,12 @@ mod imp {
     impl NotifyWindow {
         #[template_callback]
         fn show_add_topic(&self, _btn: &gtk::Button) {
-            let dialog = AddSubscriptionDialog::new();
+            let this = self.obj().clone();
+            let dialog =
+                AddSubscriptionDialog::new(this.selected_subscription().map(|x| x.server()));
             dialog.set_transient_for(Some(&self.obj().clone()));
             dialog.present();
 
-            let this = self.obj().clone();
             let dc = dialog.clone();
             dialog.connect_local("subscribe-request", true, move |_| {
                 let sub = match dc.subscription() {

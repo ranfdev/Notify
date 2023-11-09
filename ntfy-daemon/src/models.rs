@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::Error;
 
+pub const DEFAULT_SERVER: &str = "https://ntfy.sh";
 static EMOJI_MAP: OnceLock<HashMap<String, String>> = OnceLock::new();
 
 fn emoji_map() -> &'static HashMap<String, String> {
@@ -188,7 +189,7 @@ pub struct SubscriptionBuilder {
 impl SubscriptionBuilder {
     pub fn new(topic: String) -> Self {
         Self {
-            server: "https://ntfy.sh".to_string(),
+            server: DEFAULT_SERVER.to_string(),
             topic,
             muted: false,
             archived: false,

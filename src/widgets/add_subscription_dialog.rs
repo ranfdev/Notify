@@ -1,3 +1,4 @@
+use std::cell::OnceCell;
 use std::cell::RefCell;
 
 use adw::prelude::*;
@@ -20,6 +21,7 @@ mod imp {
     #[derive(Debug, Default)]
     pub struct AddSubscriptionDialog {
         pub widgets: RefCell<Widgets>,
+        pub init_custom_server: OnceCell<String>,
     }
 
     #[glib::object_subclass]
@@ -47,12 +49,6 @@ mod imp {
                 Lazy::new(|| vec![Signal::builder("subscribe-request").build()]);
             SIGNALS.as_ref()
         }
-
-        fn constructed(&self) {
-            self.parent_constructed();
-            let obj = self.obj().clone();
-            obj.build_ui();
-        }
     }
     impl WidgetImpl for AddSubscriptionDialog {}
     impl WindowImpl for AddSubscriptionDialog {}
@@ -66,8 +62,15 @@ glib::wrapper! {
 }
 
 impl AddSubscriptionDialog {
-    pub fn new() -> Self {
-        glib::Object::builder().build()
+    pub fn new(custom_server: Option<String>) -> Self {
+        let this: Self = glib::Object::builder().build();
+        if let Some(s) = custom_server {
+            if s != ntfy_daemon::models::DEFAULT_SERVER {
+                this.imp().init_custom_server.set(s).unwrap();
+            }
+        }
+        this.build_ui();
+        this
     }
     fn build_ui(&self) {
         let imp = self.imp();
@@ -118,10 +121,12 @@ impl AddSubscriptionDialog {
                             },
                             append: server_expander = &adw::ExpanderRow {
                                 set_title: "Custom server...",
-                                set_enable_expansion: false,
+                                set_enable_expansion: imp.init_custom_server.get().is_some(),
+                                set_expanded: imp.init_custom_server.get().is_some(),
                                 set_show_enable_switch: true,
                                 add_row: server_entry = &adw::EntryRow {
                                     set_title: "Server",
+                                    set_text: imp.init_custom_server.get().map(|x| x.as_str()).unwrap_or(""),
                                 }
                             }
                         },
