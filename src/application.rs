@@ -8,7 +8,6 @@ use adw::subclass::prelude::*;
 use capnp_rpc::{rpc_twoparty_capnp, twoparty, RpcSystem};
 use futures::stream::Stream;
 use futures::AsyncReadExt;
-use gettextrs::gettext;
 use gio::SocketClient;
 use gio::UnixSocketAddress;
 use gtk::prelude::*;
@@ -207,17 +206,10 @@ impl NotifyApplication {
     }
 
     fn show_about_dialog(&self) {
-        let dialog = adw::AboutWindow::builder()
-            .application_icon(APP_ID)
-            .application_name("Notify")
-            .license_type(gtk::License::Gpl30)
-            .version(VERSION)
-            .transient_for(&self.main_window())
-            .translator_credits(gettext("translator-credits"))
-            .modal(true)
-            .developers(vec!["ranfdev"])
-            .artists(vec!["ranfdev"])
-            .build();
+        let dialog = adw::AboutWindow::from_appdata("/com/ranfdev/Notify/metainfo.xml", None);
+        if let Some(w) = self.imp().window.borrow().upgrade() {
+            dialog.set_transient_for(Some(&w));
+        }
 
         dialog.present();
     }

@@ -27,32 +27,6 @@ if desktop_file_validate.found()
   )
 endif
 
-# Appdata
-appdata_conf = configuration_data()
-appdata_conf.set('app-id', application_id)
-appdata_conf.set('gettext-package', gettext_package)
-appdata_file = i18n.merge_file(
-  input: configure_file(
-    input: '@0@.metainfo.xml.in.in'.format(base_id),
-    output: '@BASENAME@',
-    configuration: appdata_conf
-  ),
-  output: '@0@.metainfo.xml'.format(application_id),
-  po_dir: podir,
-  install: true,
-  install_dir: datadir / 'metainfo'
-)
-# Validate Appdata
-if appstream_util.found()
-  test(
-    'validate-appdata', appstream_util,
-    args: [
-      'validate', '--nonet', appdata_file.full_path()
-    ],
-    depends: appdata_file,
-  )
-endif
-
 # GSchema
 gschema_conf = configuration_data()
 gschema_conf.set('app-id', application_id)
