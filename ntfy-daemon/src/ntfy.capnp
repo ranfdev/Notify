@@ -33,9 +33,16 @@ interface Subscription {
     clearNotifications @5 ();
 }
 
+struct Account {
+    server @0 :Text;
+    username @1 :Text;
+}
 
 interface SystemNotifier {
     subscribe @0 (server: Text, topic: Text) -> (subscription: Subscription);
     unsubscribe @1 (server: Text, topic: Text);
     listSubscriptions @2 () -> (list: List(Subscription));
+    addAccount @3 (account: Account, password: Text);
+    removeAccount @4 (account: Account);
+    listAccounts @5 () -> (list: List(Account));
 }

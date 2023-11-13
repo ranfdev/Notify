@@ -7,6 +7,7 @@ pub mod ntfy_capnp {
     include!(concat!(env!("OUT_DIR"), "/src/ntfy_capnp.rs"));
 }
 
+use std::rc::Rc;
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -15,6 +16,7 @@ pub struct SharedEnv {
     proxy: Arc<dyn models::NotificationProxy>,
     http: reqwest::Client,
     network: Arc<dyn models::NetworkMonitorProxy>,
+    keyring: Rc<oo7::Keyring>,
 }
 
 #[derive(thiserror::Error, Debug)]

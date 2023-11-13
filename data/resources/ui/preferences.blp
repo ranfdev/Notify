@@ -1,0 +1,35 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $NotifyPreferences : Adw.PreferencesWindow {
+  width-request: 240;
+  height-request: 360;
+  Adw.PreferencesPage {
+    title: "Accounts";
+    description: "Accounts to access protected topics";
+    Adw.PreferencesGroup {
+      title: "New Account";
+      Adw.EntryRow server_entry {
+        title: "server";
+      }
+      Adw.EntryRow username_entry {
+        title: "username";
+      }
+      Adw.PasswordEntryRow password_entry {
+        title: "password";
+      }
+      Gtk.Button add_btn {
+        margin-top: 8;
+        styles ["suggested-action"]
+        halign: end;
+        label: "Add";
+      }
+    }
+    Adw.PreferencesGroup added_accounts_group {
+      title: "Added";
+      Gtk.ListBox added_accounts {
+        styles ["boxed-list"]
+      }
+    }
+  }
+}

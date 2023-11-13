@@ -1,4 +1,4 @@
-use std::cell::{Cell, RefCell};
+use std::cell::{Cell, OnceCell, RefCell};
 use std::ops::ControlFlow;
 use std::rc::{Rc, Weak};
 use std::sync::Arc;
@@ -20,7 +20,7 @@ use crate::SharedEnv;
 use crate::{
     message_repo::Db,
     models::{self, MinMessage},
-    ntfy_capnp::{output_channel, subscription, system_notifier, watch_handle, Status},
+    ntfy_capnp::{account, output_channel, subscription, system_notifier, watch_handle, Status},
     topic_listener::{build_client, TopicListener},
 };
 
@@ -343,6 +343,7 @@ impl SystemNotifier {
         dbpath: &str,
         notification_proxy: Arc<dyn models::NotificationProxy>,
         network: Arc<dyn models::NetworkMonitorProxy>,
+        keyring: oo7::Keyring,
     ) -> Self {
         Self {
             watching: Rc::new(RefCell::new(HashMap::new())),
@@ -351,6 +352,7 @@ impl SystemNotifier {
                 proxy: notification_proxy,
                 http: build_client().unwrap(),
                 network,
+                keyring: Rc::new(keyring),
             },
         }
     }
@@ -450,6 +452,86 @@ impl system_notifier::Server for SystemNotifier {
 
         Promise::ok(())
     }
+    fn list_accounts(
+        &mut self,
+        _: system_notifier::ListAccountsParams,
+        mut results: system_notifier::ListAccountsResults,
+    ) -> capnp::capability::Promise<(), capnp::Error> {
+        let keyring = self.env.keyring.clone();
+
+        Promise::from_future(async move {
+            let attrs = HashMap::from([("type", "password")]);
+            let values = keyring
+                .search_items(attrs)
+                .await
+                .map_err(|e| capnp::Error::failed(e.to_string()))?;
+
+            let mut list = results.get().init_list(values.len() as u32);
+            for (i, item) in values.iter().enumerate() {
+                let attrs = item
+                    .attributes()
+                    .await
+                    .map_err(|e| capnp::Error::failed(e.to_string()))?;
+                let mut acc = list.reborrow().get(i as u32);
+                acc.set_username(attrs["username"][..].into());
+                acc.set_server(attrs["server"][..].into());
+            }
+            Ok(())
+        })
+    }
+    fn add_account(
+        &mut self,
+        params: system_notifier::AddAccountParams,
+        mut results: system_notifier::AddAccountResults,
+    ) -> capnp::capability::Promise<(), capnp::Error> {
+        let keyring = self.env.keyring.clone();
+        Promise::from_future(async move {
+            let account = params.get()?.get_account()?;
+            let username = account.get_username()?.to_str()?;
+            let server = account.get_server()?.to_str()?;
+            let password = params.get()?.get_password()?.to_str()?;
+
+            let attrs = HashMap::from([
+                ("type", "password"),
+                ("username", username),
+                ("server", server),
+            ]);
+            keyring
+                .create_item("Password", attrs, password, true)
+                .await
+                .map_err(|e| capnp::Error::failed(e.to_string()))?;
+
+            info!(server = %server, username = %username, "added account");
+
+            Ok(())
+        })
+    }
+    fn remove_account(
+        &mut self,
+        params: system_notifier::RemoveAccountParams,
+        mut results: system_notifier::RemoveAccountResults,
+    ) -> capnp::capability::Promise<(), capnp::Error> {
+        let keyring = self.env.keyring.clone();
+        Promise::from_future(async move {
+            let account = params.get()?.get_account()?;
+            let username = account.get_username()?.to_str()?;
+            let server = account.get_server()?.to_str()?;
+
+            let attrs = HashMap::from([
+                ("type", "password"),
+                ("username", username),
+                ("server", server),
+            ]);
+            keyring
+                .delete(attrs)
+                .await
+                .map_err(|e| capnp::Error::failed(e.to_string()))?;
+
+            info!(server = %server, username = %username, "removed account");
+
+            Ok(())
+        })
+    }
 }
 
 pub fn start(
@@ -467,10 +549,17 @@ pub fn start(
         UnixListener::bind(&socket_path).unwrap()
     });
 
+    let keyring = rt.block_on(async {
+        oo7::Keyring::new()
+            .await
+            .expect("Failed to start Secret Service")
+    });
+
     let dbpath = dbpath.to_owned();
     let f = move || {
         let local = tokio::task::LocalSet::new();
-        let mut system_notifier = SystemNotifier::new(&dbpath, notification_proxy, network_proxy);
+        let mut system_notifier =
+            SystemNotifier::new(&dbpath, notification_proxy, network_proxy, keyring);
         local.spawn_local(async move {
             system_notifier.watch_subscribed().await.unwrap();
             let system_client: system_notifier::Client = capnp_rpc::new_client(system_notifier);

@@ -133,6 +133,12 @@ impl NotifyApplication {
             })
             .build();
 
+        let action_about = gio::ActionEntry::builder("preferences")
+            .activate(|app: &Self, _, _| {
+                app.show_preferences();
+            })
+            .build();
+
         let message_action = gio::ActionEntry::builder("message-action")
             .parameter_type(Some(&glib::VariantTy::STRING))
             .activate(|app: &Self, _, params| {
@@ -212,6 +218,14 @@ impl NotifyApplication {
         }
 
         dialog.present();
+    }
+
+    fn show_preferences(&self) {
+        let win = crate::widgets::NotifyPreferences::new(
+            self.main_window().imp().notifier.get().unwrap().clone(),
+        );
+        win.set_transient_for(Some(&self.main_window()));
+        win.present();
     }
 
     pub fn run(&self) -> glib::ExitCode {
