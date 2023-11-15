@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::ops::ControlFlow;
 use std::sync::Arc;
 use std::time::Duration;
@@ -61,16 +62,24 @@ pub fn build_client() -> anyhow::Result<reqwest::Client> {
         .build()?)
 }
 
-fn topic_request(endpoint: &str, topic: &str, since: u64) -> anyhow::Result<reqwest::Request> {
+fn topic_request(
+    client: &reqwest::Client,
+    endpoint: &str,
+    topic: &str,
+    since: u64,
+    username: Option<&str>,
+    password: Option<&str>,
+) -> anyhow::Result<reqwest::Request> {
     let url = models::Subscription::build_url(endpoint, topic, since)?;
-    let mut req = reqwest::Request::new(reqwest::Method::GET, url);
-    let headers = req.headers_mut();
-    headers.append(
-        "Content-Type",
-        HeaderValue::from_static("application/x-ndjson"),
-    );
-    headers.append("Transfer-Encoding", HeaderValue::from_static("chunked"));
-    Ok(req)
+    let mut req = client
+        .get(url)
+        .header("Content-Type", "application/x-ndjson")
+        .header("Transfer-Encoding", "chunked");
+    if let Some(username) = username {
+        req = req.basic_auth(username, password);
+    }
+
+    Ok(req.build()?)
 }
 
 async fn response_lines(
@@ -161,8 +170,36 @@ impl TopicListener {
 
     #[instrument(skip_all)]
     async fn recv_and_forward(&mut self) -> anyhow::Result<()> {
-        let req = topic_request(&self.endpoint, &self.topic, self.since)?;
-        let res = self.env.http.execute(req).await?;
+        let (username, password) = {
+            let attrs = HashMap::from([("type", "password"), ("server", &self.endpoint)]);
+            let items = self
+                .env
+                .keyring
+                .search_items(attrs)
+                .await
+                .map_err(|e| capnp::Error::failed(e.to_string()))?;
+
+            if let Some(item) = items.into_iter().next() {
+                let attrs = item
+                    .attributes()
+                    .await
+                    .map_err(|e| capnp::Error::failed(e.to_string()))?;
+                let password = item.secret().await?;
+                let password = std::str::from_utf8(&*password)?;
+                (attrs.get("username").cloned(), Some(password.to_string()))
+            } else {
+                (None, None)
+            }
+        };
+        let req = topic_request(
+            &self.env.http,
+            &self.endpoint,
+            &self.topic,
+            self.since,
+            username.as_deref(),
+            password.as_deref(),
+        );
+        let res = self.env.http.execute(req?).await?;
         let reader = tokio_util::io::StreamReader::new(
             res.bytes_stream()
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string())),

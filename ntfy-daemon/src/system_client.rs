@@ -493,8 +493,7 @@ impl system_notifier::Server for SystemNotifier {
             let password = params.get()?.get_password()?.to_str()?;
 
             info!("validating account");
-            let url = models::Subscription::build_url(server, "stats", 0)
-                .map_err(|e| capnp::Error::failed(e.to_string()))?;
+            let url = models::Subscription::build_auth_url(server, "stats")?;
 
             http.get(url)
                 .basic_auth(username, Some(password))

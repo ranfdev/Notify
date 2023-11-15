@@ -157,6 +157,14 @@ impl Subscription {
             .append_pair("since", &since.to_string());
         Ok(url)
     }
+    pub fn build_auth_url(server: &str, topic: &str) -> Result<url::Url, crate::Error> {
+        let mut url = url::Url::parse(server)?;
+        url.path_segments_mut()
+            .map_err(|_| url::ParseError::RelativeUrlWithCannotBeABaseBase)?
+            .push(topic)
+            .push("auth");
+        Ok(url)
+    }
     pub fn validate(self) -> Result<Self, Vec<crate::Error>> {
         let mut errs = vec![];
         if let Err(e) = validate_topic(&self.topic) {
