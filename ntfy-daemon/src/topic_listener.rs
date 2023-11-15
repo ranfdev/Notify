@@ -170,34 +170,14 @@ impl TopicListener {
 
     #[instrument(skip_all)]
     async fn recv_and_forward(&mut self) -> anyhow::Result<()> {
-        let (username, password) = {
-            let attrs = HashMap::from([("type", "password"), ("server", &self.endpoint)]);
-            let items = self
-                .env
-                .keyring
-                .search_items(attrs)
-                .await
-                .map_err(|e| capnp::Error::failed(e.to_string()))?;
-
-            if let Some(item) = items.into_iter().next() {
-                let attrs = item
-                    .attributes()
-                    .await
-                    .map_err(|e| capnp::Error::failed(e.to_string()))?;
-                let password = item.secret().await?;
-                let password = std::str::from_utf8(&*password)?;
-                (attrs.get("username").cloned(), Some(password.to_string()))
-            } else {
-                (None, None)
-            }
-        };
+        let creds = self.env.credentials.get(&self.endpoint);
         let req = topic_request(
             &self.env.http,
             &self.endpoint,
             &self.topic,
             self.since,
-            username.as_deref(),
-            password.as_deref(),
+            creds.as_ref().map(|x| x.username.as_str()),
+            creds.as_ref().map(|x| x.password.as_str()),
         );
         let res = self.env.http.execute(req?).await?;
         let reader = tokio_util::io::StreamReader::new(

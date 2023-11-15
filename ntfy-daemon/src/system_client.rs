@@ -326,6 +326,20 @@ impl subscription::Server for SubscriptionImpl {
         model.read_until = value;
         Promise::ok(())
     }
+    fn refresh(
+        &mut self,
+        _: subscription::RefreshParams,
+        _: subscription::RefreshResults,
+    ) -> capnp::capability::Promise<(), capnp::Error> {
+        let sender = self.topic_listener.clone();
+        Promise::from_future(async move {
+            sender
+                .send(ControlFlow::Continue(()))
+                .await
+                .map_err(|e| capnp::Error::failed(format!("{:?}", e)))?;
+            Ok(())
+        })
+    }
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -343,7 +357,7 @@ impl SystemNotifier {
         dbpath: &str,
         notification_proxy: Arc<dyn models::NotificationProxy>,
         network: Arc<dyn models::NetworkMonitorProxy>,
-        keyring: oo7::Keyring,
+        credentials: crate::credentials::Credentials,
     ) -> Self {
         Self {
             watching: Rc::new(RefCell::new(HashMap::new())),
@@ -352,7 +366,7 @@ impl SystemNotifier {
                 proxy: notification_proxy,
                 http: build_client().unwrap(),
                 network,
-                keyring: Rc::new(keyring),
+                credentials,
             },
         }
     }
@@ -385,6 +399,18 @@ impl SystemNotifier {
                 }
             }))
             .await;
+            Ok(())
+        })
+    }
+    pub fn refresh_all(&mut self) -> Promise<(), capnp::Error> {
+        let watching = self.watching.clone();
+        Promise::from_future(async move {
+            let reqs: Vec<_> = watching
+                .borrow()
+                .values()
+                .map(|w| w.refresh_request())
+                .collect();
+            join_all(reqs.into_iter().map(|x| x.send().promise)).await;
             Ok(())
         })
     }
@@ -457,24 +483,14 @@ impl system_notifier::Server for SystemNotifier {
         _: system_notifier::ListAccountsParams,
         mut results: system_notifier::ListAccountsResults,
     ) -> capnp::capability::Promise<(), capnp::Error> {
-        let keyring = self.env.keyring.clone();
+        let values = self.env.credentials.list_all();
 
         Promise::from_future(async move {
-            let attrs = HashMap::from([("type", "password")]);
-            let values = keyring
-                .search_items(attrs)
-                .await
-                .map_err(|e| capnp::Error::failed(e.to_string()))?;
-
             let mut list = results.get().init_list(values.len() as u32);
-            for (i, item) in values.iter().enumerate() {
-                let attrs = item
-                    .attributes()
-                    .await
-                    .map_err(|e| capnp::Error::failed(e.to_string()))?;
+            for (i, item) in values.into_iter().enumerate() {
                 let mut acc = list.reborrow().get(i as u32);
-                acc.set_username(attrs["username"][..].into());
-                acc.set_server(attrs["server"][..].into());
+                acc.set_server(item.0[..].into());
+                acc.set_username(item.1.username[..].into());
             }
             Ok(())
         })
@@ -482,10 +498,11 @@ impl system_notifier::Server for SystemNotifier {
     fn add_account(
         &mut self,
         params: system_notifier::AddAccountParams,
-        mut results: system_notifier::AddAccountResults,
+        _: system_notifier::AddAccountResults,
     ) -> capnp::capability::Promise<(), capnp::Error> {
-        let keyring = self.env.keyring.clone();
+        let credentials = self.env.credentials.clone();
         let http = self.env.http.clone();
+        let refresh = self.refresh_all();
         Promise::from_future(async move {
             let account = params.get()?.get_account()?;
             let username = account.get_username()?.to_str()?;
@@ -503,15 +520,11 @@ impl system_notifier::Server for SystemNotifier {
                 .error_for_status()
                 .map_err(|e| capnp::Error::failed(e.to_string()))?;
 
-            let attrs = HashMap::from([
-                ("type", "password"),
-                ("username", username),
-                ("server", server),
-            ]);
-            keyring
-                .create_item("Password", attrs, password, true)
+            credentials
+                .insert(server, username, password)
                 .await
                 .map_err(|e| capnp::Error::failed(e.to_string()))?;
+            refresh.await?;
 
             info!(server = %server, username = %username, "added account");
 
@@ -521,21 +534,16 @@ impl system_notifier::Server for SystemNotifier {
     fn remove_account(
         &mut self,
         params: system_notifier::RemoveAccountParams,
-        mut results: system_notifier::RemoveAccountResults,
+        _: system_notifier::RemoveAccountResults,
     ) -> capnp::capability::Promise<(), capnp::Error> {
-        let keyring = self.env.keyring.clone();
+        let credentials = self.env.credentials.clone();
         Promise::from_future(async move {
             let account = params.get()?.get_account()?;
             let username = account.get_username()?.to_str()?;
             let server = account.get_server()?.to_str()?;
 
-            let attrs = HashMap::from([
-                ("type", "password"),
-                ("username", username),
-                ("server", server),
-            ]);
-            keyring
-                .delete(attrs)
+            credentials
+                .delete(server)
                 .await
                 .map_err(|e| capnp::Error::failed(e.to_string()))?;
 
@@ -561,17 +569,13 @@ pub fn start(
         UnixListener::bind(&socket_path).unwrap()
     });
 
-    let keyring = rt.block_on(async {
-        oo7::Keyring::new()
-            .await
-            .expect("Failed to start Secret Service")
-    });
-
     let dbpath = dbpath.to_owned();
     let f = move || {
+        let credentials =
+            rt.block_on(async { crate::credentials::Credentials::new().await.unwrap() });
         let local = tokio::task::LocalSet::new();
         let mut system_notifier =
-            SystemNotifier::new(&dbpath, notification_proxy, network_proxy, keyring);
+            SystemNotifier::new(&dbpath, notification_proxy, network_proxy, credentials);
         local.spawn_local(async move {
             system_notifier.watch_subscribed().await.unwrap();
             let system_client: system_notifier::Client = capnp_rpc::new_client(system_notifier);

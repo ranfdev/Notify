@@ -31,6 +31,7 @@ interface Subscription {
     updateReadUntil @4 (value: UInt64);
 
     clearNotifications @5 ();
+    refresh @6 ();
 }
 
 struct Account {

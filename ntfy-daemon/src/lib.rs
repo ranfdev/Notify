@@ -1,3 +1,4 @@
+pub mod credentials;
 pub mod message_repo;
 pub mod models;
 pub mod retry;
@@ -16,7 +17,7 @@ pub struct SharedEnv {
     proxy: Arc<dyn models::NotificationProxy>,
     http: reqwest::Client,
     network: Arc<dyn models::NetworkMonitorProxy>,
-    keyring: Rc<oo7::Keyring>,
+    credentials: credentials::Credentials,
 }
 
 #[derive(thiserror::Error, Debug)]
