@@ -485,11 +485,24 @@ impl system_notifier::Server for SystemNotifier {
         mut results: system_notifier::AddAccountResults,
     ) -> capnp::capability::Promise<(), capnp::Error> {
         let keyring = self.env.keyring.clone();
+        let http = self.env.http.clone();
         Promise::from_future(async move {
             let account = params.get()?.get_account()?;
             let username = account.get_username()?.to_str()?;
             let server = account.get_server()?.to_str()?;
             let password = params.get()?.get_password()?.to_str()?;
+
+            info!("validating account");
+            let url = models::Subscription::build_url(server, "stats", 0)
+                .map_err(|e| capnp::Error::failed(e.to_string()))?;
+
+            http.get(url)
+                .basic_auth(username, Some(password))
+                .send()
+                .await
+                .map_err(|e| capnp::Error::failed(e.to_string()))?
+                .error_for_status()
+                .map_err(|e| capnp::Error::failed(e.to_string()))?;
 
             let attrs = HashMap::from([
                 ("type", "password"),
