@@ -1,4 +1,4 @@
-use std::cell::{Cell, OnceCell, RefCell};
+use std::cell::{Cell, RefCell};
 use std::ops::ControlFlow;
 use std::rc::{Rc, Weak};
 use std::sync::Arc;
@@ -20,7 +20,7 @@ use crate::SharedEnv;
 use crate::{
     message_repo::Db,
     models::{self, MinMessage},
-    ntfy_capnp::{account, output_channel, subscription, system_notifier, watch_handle, Status},
+    ntfy_capnp::{output_channel, subscription, system_notifier, watch_handle, Status},
     topic_listener::{build_client, TopicListener},
 };
 

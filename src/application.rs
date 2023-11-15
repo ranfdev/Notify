@@ -133,7 +133,7 @@ impl NotifyApplication {
             })
             .build();
 
-        let action_about = gio::ActionEntry::builder("preferences")
+        let action_preferences = gio::ActionEntry::builder("preferences")
             .activate(|app: &Self, _, _| {
                 app.show_preferences();
             })
@@ -156,7 +156,12 @@ impl NotifyApplication {
                 app.handle_message_action(action);
             })
             .build();
-        self.add_action_entries([action_quit, action_about, message_action]);
+        self.add_action_entries([
+            action_quit,
+            action_about,
+            action_preferences,
+            message_action,
+        ]);
     }
 
     fn handle_message_action(&self, action: models::Action) {

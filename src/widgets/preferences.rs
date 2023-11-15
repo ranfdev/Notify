@@ -1,17 +1,10 @@
-use std::cell::Cell;
 use std::cell::OnceCell;
 
 use adw::prelude::*;
 use adw::subclass::prelude::*;
-use futures::prelude::*;
 use gtk::{gio, glib};
-use ntfy_daemon::models;
-use ntfy_daemon::ntfy_capnp::{system_notifier, Status};
-use tracing::warn;
+use ntfy_daemon::ntfy_capnp::system_notifier;
 
-use crate::application::NotifyApplication;
-use crate::config::{APP_ID, PROFILE};
-use crate::subscription::Subscription;
 use crate::widgets::*;
 
 mod imp {
@@ -157,7 +150,7 @@ impl NotifyPreferences {
         acc.set_server(server[..].into());
         req.get().set_password(password[..].into());
 
-        let res = req.send().promise.await?;
+        req.send().promise.await?;
 
         self.show_accounts().await?;
 

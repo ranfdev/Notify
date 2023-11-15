@@ -1,10 +1,8 @@
-use std::collections::HashMap;
 use std::ops::ControlFlow;
 use std::sync::Arc;
 use std::time::Duration;
 
 use futures::prelude::*;
-use reqwest::header::HeaderValue;
 use serde::{Deserialize, Serialize};
 use tokio::io::AsyncBufReadExt;
 use tokio::sync::mpsc;
