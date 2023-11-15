@@ -30,16 +30,19 @@ impl<W: glib::IsA<gtk::Widget>> SpawnWithToast for W {
             .ancestor(adw::ToastOverlay::static_type())
             .and_downcast();
         let win: Option<NotifyWindow> = self.ancestor(NotifyWindow::static_type()).and_downcast();
-        glib::MainContext::default().spawn_local(async move {
-            if let Err(e) = f.await {
-                if let Some(o) = toast_overlay
-                    .as_ref()
-                    .or_else(|| win.as_ref().map(|win| win.imp().toast_overlay.as_ref()))
-                {
-                    o.add_toast(adw::Toast::builder().title(&e.to_string()).build())
+        glib::MainContext::ref_thread_default().spawn_local_with_priority(
+            glib::Priority::DEFAULT_IDLE,
+            async move {
+                if let Err(e) = f.await {
+                    if let Some(o) = toast_overlay
+                        .as_ref()
+                        .or_else(|| win.as_ref().map(|win| win.imp().toast_overlay.as_ref()))
+                    {
+                        o.add_toast(adw::Toast::builder().title(&e.to_string()).build())
+                    }
                 }
-            }
-        });
+            },
+        );
     }
 }
 
