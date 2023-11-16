@@ -58,6 +58,13 @@ impl Credentials {
         self.creds.borrow().clone()
     }
     pub async fn insert(&self, server: &str, username: &str, password: &str) -> anyhow::Result<()> {
+        {
+            if let Some(cred) = self.creds.borrow().get(server) {
+                if cred.username != username {
+                    anyhow::bail!("You can add only one account per server");
+                }
+            }
+        }
         let attrs = HashMap::from([
             ("type", "password"),
             ("username", username),

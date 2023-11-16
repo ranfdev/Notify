@@ -26,6 +26,12 @@
 
   <content_rating type="oars-1.0" />
   <releases>
+    <release version="0.1.3" date="2023-11-16">
+      <ul>
+        <li>Support for basic authentication with custom accounts</li>
+        <li>Custom server field is now prefilled when appropriate</li>
+      </ul>
+    </release>
     <release version="0.1.2" date="2023-11-07">
       <ul>
         <li>Introduced dialog to write advanced messages</li>
