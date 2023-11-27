@@ -18,7 +18,7 @@ fn emoji_map() -> &'static HashMap<String, String> {
 }
 
 pub fn validate_topic(topic: &str) -> Result<&str, Error> {
-    let re = Regex::new(r"^[\w\-]+$").unwrap();
+    let re = Regex::new(r"^[\w\-]{1,64}$").unwrap();
     if re.is_match(topic) {
         Ok(topic)
     } else {
