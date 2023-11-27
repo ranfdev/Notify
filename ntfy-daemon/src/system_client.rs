@@ -202,11 +202,16 @@ impl SubscriptionImpl {
 
     fn _publish<'a>(&'a mut self, msg: &'a str) -> impl Future<Output = Result<(), capnp::Error>> {
         let msg = msg.to_owned();
-        let req = self.env.http.post(&self.model.borrow().server).body(msg);
+        let server = &self.model.borrow().server;
+        let creds = self.env.credentials.get(server);
+        let mut req = self.env.http.post(server);
+        if let Some(creds) = creds {
+            req = req.basic_auth(creds.username, Some(creds.password));
+        }
 
         async move {
             info!("sending message");
-            let res = req.send().await;
+            let res = req.body(msg).send().await;
             match res {
                 Err(e) => Err(capnp::Error::failed(e.to_string())),
                 Ok(res) => {
