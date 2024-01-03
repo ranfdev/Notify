@@ -26,6 +26,11 @@
 
   <content_rating type="oars-1.0" />
   <releases>
+    <release version="0.1.5" date="2024-01-03">
+      <ul>
+        <li>Fixed about window crashing</li>
+      </ul>
+    </release>
     <release version="0.1.4" date="2023-11-27">
       <ul>
         <li>Various bugfixes</li>
