@@ -217,7 +217,10 @@ impl NotifyApplication {
     }
 
     fn show_about_dialog(&self) {
-        let dialog = adw::AboutWindow::from_appdata("/com/ranfdev/Notify/metainfo.xml", None);
+        let dialog = adw::AboutWindow::from_appdata(
+            "/com/ranfdev/Notify/com.ranfdev.Notify.metainfo.xml",
+            None,
+        );
         if let Some(w) = self.imp().window.borrow().upgrade() {
             dialog.set_transient_for(Some(&w));
         }
