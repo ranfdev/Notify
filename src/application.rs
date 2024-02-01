@@ -265,38 +265,40 @@ impl NotifyApplication {
         // `Invalid client serial` and it's broken.
         // Until https://github.com/flatpak/xdg-dbus-proxy/issues/46 is solved, I have to handle these things
         // in the main thread. Uff.
-        let (tx, rx) = glib::MainContext::channel(Default::default());
+
+        let (s, r) = async_channel::unbounded::<models::Notification>();
+
         let app = self.clone();
-        rx.attach(None, move |n: models::Notification| {
-            let gio_notif = gio::Notification::new(&n.title);
-            gio_notif.set_body(Some(&n.body));
+        glib::MainContext::ref_thread_default().spawn_local(async move {
+            while let Ok(n) = r.recv().await {
+                let gio_notif = gio::Notification::new(&n.title);
+                gio_notif.set_body(Some(&n.body));
 
-            let action_name = |a| {
-                let json = serde_json::to_string(a).unwrap();
-                gio::Action::print_detailed_name("app.message-action", Some(&json.into()))
-            };
-            for a in n.actions.iter() {
-                match a {
-                    models::Action::View { label, .. } => {
-                        gio_notif.add_button(&label, &action_name(a))
+                let action_name = |a| {
+                    let json = serde_json::to_string(a).unwrap();
+                    gio::Action::print_detailed_name("app.message-action", Some(&json.into()))
+                };
+                for a in n.actions.iter() {
+                    match a {
+                        models::Action::View { label, .. } => {
+                            gio_notif.add_button(&label, &action_name(a))
+                        }
+                        models::Action::Http { label, .. } => {
+                            gio_notif.add_button(&label, &action_name(a))
+                        }
+                        _ => {}
                     }
-                    models::Action::Http { label, .. } => {
-                        gio_notif.add_button(&label, &action_name(a))
-                    }
-                    _ => {}
                 }
+
+                app.send_notification(None, &gio_notif);
             }
-
-            app.send_notification(None, &gio_notif);
-            glib::ControlFlow::Continue
         });
-
         struct Proxies {
-            notification: glib::Sender<models::Notification>,
+            notification: async_channel::Sender<models::Notification>,
         }
         impl models::NotificationProxy for Proxies {
             fn send(&self, n: models::Notification) -> anyhow::Result<()> {
-                self.notification.send(n)?;
+                self.notification.send_blocking(n)?;
                 Ok(())
             }
         }
@@ -317,7 +319,7 @@ impl NotifyApplication {
                 Box::pin(rx)
             }
         }
-        let proxies = std::sync::Arc::new(Proxies { notification: tx });
+        let proxies = std::sync::Arc::new(Proxies { notification: s });
         ntfy_daemon::system_client::start(
             socket_path.to_owned(),
             dbpath.to_str().unwrap(),

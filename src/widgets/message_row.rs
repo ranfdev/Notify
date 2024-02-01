@@ -9,6 +9,8 @@ use gtk::{gdk, gio, glib};
 use ntfy_daemon::models;
 use tracing::error;
 
+use crate::widgets::window::SpawnWithToast;
+
 mod imp {
     use super::*;
 
@@ -161,10 +163,10 @@ impl MessageRow {
         Ok(bytes)
     }
     fn build_image(&self, url: String) -> gtk::Picture {
-        let (tx, rx) = glib::MainContext::channel(Default::default());
+        let (s, r) = async_channel::unbounded();
         gio::spawn_blocking(move || {
-            if let Err(e) =
-                Self::fetch_image_bytes(&url).map(|bytes| tx.send(glib::Bytes::from_owned(bytes)))
+            if let Err(e) = Self::fetch_image_bytes(&url)
+                .map(|bytes| s.send_blocking(glib::Bytes::from_owned(bytes)))
             {
                 error!(error = %e)
             }
@@ -174,18 +176,15 @@ impl MessageRow {
         picture.set_can_shrink(true);
         picture.set_height_request(350);
         let picturec = picture.clone();
-        rx.attach(Default::default(), move |b| {
+
+        self.spawn_with_near_toast(async move {
+            let b = r.recv().await?;
             let stream = gio::MemoryInputStream::from_bytes(&b);
-            let pixbuf = match Pixbuf::from_stream(&stream, gio::Cancellable::NONE) {
-                Ok(res) => res,
-                Err(e) => {
-                    error!(error = %e, "parsing image contents");
-                    return glib::ControlFlow::Break;
-                }
-            };
+            let pixbuf = Pixbuf::from_stream(&stream, gio::Cancellable::NONE)?;
             picturec.set_paintable(Some(&gdk::Texture::for_pixbuf(&pixbuf)));
-            glib::ControlFlow::Break
+            Ok::<(), anyhow::Error>(())
         });
+
         picture
     }
     fn build_action_btn(&self, action: models::Action) -> gtk::Button {

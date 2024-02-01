@@ -49,23 +49,19 @@ mod imp {
             self.parent_constructed();
             let this = self.obj().clone();
 
-            let (tx, rx) = glib::MainContext::channel(glib::Priority::default());
-            let rx =
-                crate::async_utils::debounce_channel(std::time::Duration::from_millis(500), rx);
-            rx.attach(None, move |entry| {
-                this.update_display_name(&entry);
-                glib::ControlFlow::Continue
-            });
-
-            let this = self.obj().clone();
             self.display_name_entry
                 .set_text(&this.subscription().unwrap().display_name());
             self.muted_switch_row
                 .set_active(this.subscription().unwrap().muted());
 
+            let debouncer = crate::async_utils::Debouncer::new();
             self.display_name_entry.connect_changed({
                 move |entry| {
-                    tx.send(entry.clone()).unwrap();
+                    let entry = entry.clone();
+                    let this = this.clone();
+                    debouncer.call(std::time::Duration::from_millis(500), move || {
+                        this.update_display_name(&entry);
+                    })
                 }
             });
             let this = self.obj().clone();

@@ -145,24 +145,29 @@ impl AddSubscriptionDialog {
             },
         }
 
-        let (tx, rx) = glib::MainContext::channel(Default::default());
-        let txc = tx.clone();
-        topic_entry.delegate().unwrap().connect_changed(move |_| {
-            txc.send(()).unwrap();
-        });
-        let txc = tx.clone();
-        server_entry.delegate().unwrap().connect_changed(move |_| {
-            txc.send(()).unwrap();
-        });
-        server_expander.connect_enable_expansion_notify(move |_| {
-            tx.send(()).unwrap();
-        });
-        let rx = crate::async_utils::debounce_channel(std::time::Duration::from_millis(500), rx);
-        let objc = obj.clone();
-        rx.attach(None, move |_| {
-            objc.check_errors();
-            glib::ControlFlow::Continue
-        });
+        let debounced_error_check = {
+            let db = crate::async_utils::Debouncer::new();
+            let objc = obj.clone();
+            move || {
+                db.call(std::time::Duration::from_millis(500), move || {
+                    objc.check_errors()
+                });
+            }
+        };
+
+        let f = debounced_error_check.clone();
+        topic_entry
+            .delegate()
+            .unwrap()
+            .connect_changed(move |_| f.clone()());
+        let f = debounced_error_check.clone();
+        server_entry
+            .delegate()
+            .unwrap()
+            .connect_changed(move |_| f.clone()());
+        let f = debounced_error_check.clone();
+        server_expander.connect_enable_expansion_notify(move |_| f.clone()());
+
         imp.widgets.replace(Widgets {
             topic_entry,
             server_expander,
