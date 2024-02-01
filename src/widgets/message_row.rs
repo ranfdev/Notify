@@ -3,8 +3,6 @@ use std::io::Read;
 use adw::prelude::*;
 use adw::subclass::prelude::*;
 use chrono::NaiveDateTime;
-use gdk_pixbuf::Pixbuf;
-use gtk::gdk_pixbuf;
 use gtk::{gdk, gio, glib};
 use ntfy_daemon::models;
 use tracing::error;
@@ -165,9 +163,11 @@ impl MessageRow {
     fn build_image(&self, url: String) -> gtk::Picture {
         let (s, r) = async_channel::unbounded();
         gio::spawn_blocking(move || {
-            if let Err(e) = Self::fetch_image_bytes(&url)
-                .map(|bytes| s.send_blocking(glib::Bytes::from_owned(bytes)))
-            {
+            if let Err(e) = Self::fetch_image_bytes(&url).and_then(|bytes| {
+                let t = gdk::Texture::from_bytes(&glib::Bytes::from_owned(bytes))?;
+                s.send_blocking(t)?;
+                Ok(())
+            }) {
                 error!(error = %e)
             }
             glib::ControlFlow::Break
@@ -178,10 +178,8 @@ impl MessageRow {
         let picturec = picture.clone();
 
         self.spawn_with_near_toast(async move {
-            let b = r.recv().await?;
-            let stream = gio::MemoryInputStream::from_bytes(&b);
-            let pixbuf = Pixbuf::from_stream(&stream, gio::Cancellable::NONE)?;
-            picturec.set_paintable(Some(&gdk::Texture::for_pixbuf(&pixbuf)));
+            let t = r.recv().await?;
+            picturec.set_paintable(Some(&t));
             Ok::<(), anyhow::Error>(())
         });
 
