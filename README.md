@@ -18,3 +18,6 @@ https://ntfy.sh client application to receive everyday's notifications.
 
 The code is split between the GUI and the underlying ntfy-daemon.
 
+## How to run
+Use gnome-builder to clone and run the project. Note: after clicking the "run"
+button a terminal may appear at the bottom: run the command "notify" in it.

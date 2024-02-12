@@ -3,11 +3,11 @@ use std::cell::RefCell;
 
 use adw::prelude::*;
 use adw::subclass::prelude::*;
-use glib::once_cell::sync::Lazy;
 use glib::subclass::Signal;
 use gtk::gio;
 use gtk::glib;
 use ntfy_daemon::models;
+use once_cell::sync::Lazy;
 
 #[derive(Default, Debug, Clone)]
 pub struct Widgets {
@@ -28,14 +28,13 @@ mod imp {
     impl ObjectSubclass for AddSubscriptionDialog {
         const NAME: &'static str = "AddSubscriptionDialog";
         type Type = super::AddSubscriptionDialog;
-        type ParentType = adw::Window;
+        type ParentType = adw::Dialog;
 
         fn class_init(klass: &mut Self::Class) {
             klass.add_binding_action(
                 gtk::gdk::Key::Escape,
                 gtk::gdk::ModifierType::empty(),
                 "window.close",
-                None,
             );
             klass.install_action("default.activate", None, |this, _, _| {
                 this.emit_subscribe_request();
@@ -51,13 +50,12 @@ mod imp {
         }
     }
     impl WidgetImpl for AddSubscriptionDialog {}
-    impl WindowImpl for AddSubscriptionDialog {}
-    impl AdwWindowImpl for AddSubscriptionDialog {}
+    impl AdwDialogImpl for AddSubscriptionDialog {}
 }
 
 glib::wrapper! {
     pub struct AddSubscriptionDialog(ObjectSubclass<imp::AddSubscriptionDialog>)
-        @extends gtk::Widget, gtk::Window, adw::Window,
+        @extends gtk::Widget, adw::Dialog,
         @implements gio::ActionMap, gio::ActionGroup, gtk::Root;
 }
 
@@ -75,72 +73,67 @@ impl AddSubscriptionDialog {
     fn build_ui(&self) {
         let imp = self.imp();
         let obj = self.clone();
-        obj.set_title(Some("Subscribe To Topic"));
-        obj.set_modal(true);
-        obj.set_default_width(360);
+        obj.set_title("Subscribe To Topic");
 
         relm4_macros::view! {
             toolbar_view = adw::ToolbarView {
                 add_top_bar: &adw::HeaderBar::new(),
                 #[wrap(Some)]
-                set_content = &adw::Clamp {
-                    #[wrap(Some)]
-                    set_child = &gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_spacing: 12,
-                        set_margin_end: 12,
-                        set_margin_start: 12,
-                        set_margin_top: 12,
-                        set_margin_bottom: 12,
-                        append = &gtk::Label {
-                            add_css_class: "dim-label",
-                            set_label: "Topics may not be password-protected, so choose a name that's not easy to guess. \
-                                Once subscribed, you can PUT/POST notifications.",
-                            set_wrap: true,
-                            set_xalign: 0.0,
-                            set_wrap_mode: gtk::pango::WrapMode::WordChar
-                        },
-                        append = &gtk::ListBox {
-                            add_css_class: "boxed-list",
-                            append: topic_entry = &adw::EntryRow {
-                                set_title: "Topic",
-                                set_activates_default: true,
-                                add_suffix = &gtk::Button {
-                                    set_icon_name: "dice3-symbolic",
-                                    set_tooltip_text: Some("Generate name"),
-                                    set_valign: gtk::Align::Center,
-                                    add_css_class: "flat",
-                                    connect_clicked[topic_entry] => move |_| {
-                                        use rand::distributions::Alphanumeric;
-                                        use rand::{thread_rng, Rng};
-                                        let mut rng = thread_rng();
-                                        let chars: String = (0..10).map(|_| rng.sample(Alphanumeric) as char).collect();
-                                        topic_entry.set_text(&chars);
-                                    }
-                                }
-                            },
-                            append: server_expander = &adw::ExpanderRow {
-                                set_title: "Custom server...",
-                                set_enable_expansion: imp.init_custom_server.get().is_some(),
-                                set_expanded: imp.init_custom_server.get().is_some(),
-                                set_show_enable_switch: true,
-                                add_row: server_entry = &adw::EntryRow {
-                                    set_title: "Server",
-                                    set_text: imp.init_custom_server.get().map(|x| x.as_str()).unwrap_or(""),
+                set_content = &gtk::Box {
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_spacing: 12,
+                    set_margin_end: 12,
+                    set_margin_start: 12,
+                    set_margin_top: 12,
+                    set_margin_bottom: 12,
+                    append = &gtk::Label {
+                        add_css_class: "dim-label",
+                        set_label: "Topics may not be password-protected, so choose a name that's not easy to guess. \
+                            Once subscribed, you can PUT/POST notifications.",
+                        set_wrap: true,
+                        set_xalign: 0.0,
+                        set_wrap_mode: gtk::pango::WrapMode::WordChar
+                    },
+                    append = &gtk::ListBox {
+                        add_css_class: "boxed-list",
+                        append: topic_entry = &adw::EntryRow {
+                            set_title: "Topic",
+                            set_activates_default: true,
+                            add_suffix = &gtk::Button {
+                                set_icon_name: "dice3-symbolic",
+                                set_tooltip_text: Some("Generate name"),
+                                set_valign: gtk::Align::Center,
+                                add_css_class: "flat",
+                                connect_clicked[topic_entry] => move |_| {
+                                    use rand::distributions::Alphanumeric;
+                                    use rand::{thread_rng, Rng};
+                                    let mut rng = thread_rng();
+                                    let chars: String = (0..10).map(|_| rng.sample(Alphanumeric) as char).collect();
+                                    topic_entry.set_text(&chars);
                                 }
                             }
                         },
-                        append: sub_btn = &gtk::Button {
-                            set_label: "Subscribe",
-                            add_css_class: "suggested-action",
-                            add_css_class: "pill",
-                            set_halign: gtk::Align::Center,
-                            set_sensitive: false,
-                            connect_clicked[obj] => move |_| {
-                                obj.emit_subscribe_request();
+                        append: server_expander = &adw::ExpanderRow {
+                            set_title: "Custom server...",
+                            set_enable_expansion: imp.init_custom_server.get().is_some(),
+                            set_expanded: imp.init_custom_server.get().is_some(),
+                            set_show_enable_switch: true,
+                            add_row: server_entry = &adw::EntryRow {
+                                set_title: "Server",
+                                set_text: imp.init_custom_server.get().map(|x| x.as_str()).unwrap_or(""),
                             }
                         }
                     },
+                    append: sub_btn = &gtk::Button {
+                        set_label: "Subscribe",
+                        add_css_class: "suggested-action",
+                        add_css_class: "pill",
+                        set_halign: gtk::Align::Center,
+                        set_sensitive: false,
+                        connect_clicked[obj] => move |_| {
+                            obj.emit_subscribe_request();
+                        }
+                    }
                 },
             },
         }
@@ -175,7 +168,8 @@ impl AddSubscriptionDialog {
             sub_btn,
         });
 
-        obj.set_content(Some(&toolbar_view));
+        obj.set_content_width(480);
+        obj.set_child(Some(&toolbar_view));
     }
     pub fn subscription(&self) -> Result<models::Subscription, Vec<ntfy_daemon::Error>> {
         let w = { self.imp().widgets.borrow().clone() };

@@ -26,7 +26,7 @@ mod imp {
     impl ObjectSubclass for SubscriptionInfoDialog {
         const NAME: &'static str = "SubscriptionInfoDialog";
         type Type = super::SubscriptionInfoDialog;
-        type ParentType = adw::Window;
+        type ParentType = adw::Dialog;
 
         fn class_init(klass: &mut Self::Class) {
             klass.bind_template();
@@ -34,7 +34,6 @@ mod imp {
                 gtk::gdk::Key::Escape,
                 gtk::gdk::ModifierType::empty(),
                 "window.close",
-                None,
             );
         }
 
@@ -73,13 +72,12 @@ mod imp {
         }
     }
     impl WidgetImpl for SubscriptionInfoDialog {}
-    impl WindowImpl for SubscriptionInfoDialog {}
-    impl AdwWindowImpl for SubscriptionInfoDialog {}
+    impl AdwDialogImpl for SubscriptionInfoDialog {}
 }
 
 glib::wrapper! {
     pub struct SubscriptionInfoDialog(ObjectSubclass<imp::SubscriptionInfoDialog>)
-        @extends gtk::Widget, gtk::Window, adw::Window,
+        @extends gtk::Widget, adw::Dialog,
         @implements gio::ActionMap, gio::ActionGroup, gtk::Root;
 }
 

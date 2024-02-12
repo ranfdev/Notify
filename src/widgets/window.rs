@@ -21,7 +21,7 @@ pub trait SpawnWithToast {
     );
 }
 
-impl<W: glib::IsA<gtk::Widget>> SpawnWithToast for W {
+impl<W: IsA<gtk::Widget>> SpawnWithToast for W {
     fn spawn_with_near_toast<T, R: std::fmt::Display>(
         &self,
         f: impl Future<Output = Result<T, R>> + 'static,
@@ -125,8 +125,7 @@ mod imp {
             let this = self.obj().clone();
             let dialog =
                 AddSubscriptionDialog::new(this.selected_subscription().map(|x| x.server()));
-            dialog.set_transient_for(Some(&self.obj().clone()));
-            dialog.present();
+            dialog.present(&self.obj().clone());
 
             let dc = dialog.clone();
             dialog.connect_local("subscribe-request", true, move |_| {
@@ -272,8 +271,7 @@ impl NotifyWindow {
     }
     fn show_subscription_info(&self) {
         let sub = SubscriptionInfoDialog::new(self.selected_subscription().unwrap());
-        sub.set_transient_for(Some(self));
-        sub.present();
+        sub.present(self);
     }
     fn connect_items_changed(&self) {
         let this = self.clone();
@@ -448,7 +446,7 @@ impl NotifyWindow {
         chip
     }
 
-    fn build_subscription_row(sub: &Subscription) -> impl glib::IsA<gtk::Widget> {
+    fn build_subscription_row(sub: &Subscription) -> impl IsA<gtk::Widget> {
         let b = gtk::Box::builder().spacing(4).build();
 
         let label = gtk::Label::builder()

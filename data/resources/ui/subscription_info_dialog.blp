@@ -1,10 +1,8 @@
 using Gtk 4.0;
 using Adw 1;
 
-template $SubscriptionInfoDialog : Adw.Window {
-  modal: true;
+template $SubscriptionInfoDialog : Adw.Dialog {
   title: "Subscription Info";
-  width-request: 240;
   Adw.ToolbarView {
     [top]
     Adw.HeaderBar {}
