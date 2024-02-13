@@ -4,13 +4,13 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 
+use adw::prelude::*;
 use adw::subclass::prelude::*;
 use capnp_rpc::{rpc_twoparty_capnp, twoparty, RpcSystem};
 use futures::stream::Stream;
 use futures::AsyncReadExt;
 use gio::SocketClient;
 use gio::UnixSocketAddress;
-use gtk::prelude::*;
 use gtk::{gdk, gio, glib};
 use ntfy_daemon::models;
 use ntfy_daemon::ntfy_capnp::system_notifier;
@@ -217,23 +217,20 @@ impl NotifyApplication {
     }
 
     fn show_about_dialog(&self) {
-        let dialog = adw::AboutWindow::from_appdata(
+        let dialog = adw::AboutDialog::from_appdata(
             "/com/ranfdev/Notify/com.ranfdev.Notify.metainfo.xml",
             None,
         );
         if let Some(w) = self.imp().window.borrow().upgrade() {
-            dialog.set_transient_for(Some(&w));
+            dialog.present(&w);
         }
-
-        dialog.present();
     }
 
     fn show_preferences(&self) {
         let win = crate::widgets::NotifyPreferences::new(
             self.main_window().imp().notifier.get().unwrap().clone(),
         );
-        win.set_transient_for(Some(&self.main_window()));
-        win.present();
+        win.present(&self.main_window());
     }
 
     pub fn run(&self) -> glib::ExitCode {

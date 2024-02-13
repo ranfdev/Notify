@@ -48,7 +48,7 @@ mod imp {
     impl ObjectSubclass for NotifyPreferences {
         const NAME: &'static str = "NotifyPreferences";
         type Type = super::NotifyPreferences;
-        type ParentType = adw::PreferencesWindow;
+        type ParentType = adw::PreferencesDialog;
 
         fn class_init(klass: &mut Self::Class) {
             klass.bind_template();
@@ -66,16 +66,13 @@ mod imp {
     }
 
     impl WidgetImpl for NotifyPreferences {}
-    impl WindowImpl for NotifyPreferences {}
-
-    impl ApplicationWindowImpl for NotifyPreferences {}
-    impl AdwWindowImpl for NotifyPreferences {}
-    impl PreferencesWindowImpl for NotifyPreferences {}
+    impl AdwDialogImpl for NotifyPreferences {}
+    impl PreferencesDialogImpl for NotifyPreferences {}
 }
 
 glib::wrapper! {
     pub struct NotifyPreferences(ObjectSubclass<imp::NotifyPreferences>)
-        @extends gtk::Widget, gtk::Window, adw::Window, adw::PreferencesWindow,
+        @extends gtk::Widget, adw::Dialog, adw::PreferencesDialog,
         @implements gio::ActionMap, gio::ActionGroup, gtk::Root;
 }
 

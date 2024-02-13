@@ -20,30 +20,22 @@ mod imp {
     impl ObjectSubclass for AdvancedMessageDialog {
         const NAME: &'static str = "AdvancedMessageDialog";
         type Type = super::AdvancedMessageDialog;
-        type ParentType = adw::Window;
+        type ParentType = adw::Dialog;
     }
 
     impl ObjectImpl for AdvancedMessageDialog {}
     impl WidgetImpl for AdvancedMessageDialog {}
-    impl WindowImpl for AdvancedMessageDialog {}
-    impl AdwWindowImpl for AdvancedMessageDialog {}
+    impl AdwDialogImpl for AdvancedMessageDialog {}
 }
 
 glib::wrapper! {
     pub struct AdvancedMessageDialog(ObjectSubclass<imp::AdvancedMessageDialog>)
-        @extends gtk::Widget, gtk::Window, adw::Window;
+        @extends gtk::Widget, adw::Dialog;
 }
 
 impl AdvancedMessageDialog {
-    pub fn new(
-        parent: &impl IsA<gtk::Window>,
-        subscription: Subscription,
-        message: String,
-    ) -> Self {
+    pub fn new(subscription: Subscription, message: String) -> Self {
         let this: Self = glib::Object::new();
-        this.set_transient_for(Some(parent));
-        this.set_modal(true);
-        this.set_default_height(400);
         this.imp().subscription.set(subscription).unwrap();
         this.build_ui(
             this.imp().subscription.get().unwrap().topic().clone(),
@@ -52,6 +44,9 @@ impl AdvancedMessageDialog {
         this
     }
     fn build_ui(&self, topic: String, message: String) {
+        self.set_title("Advanced Message");
+        self.set_content_height(480);
+        self.set_content_width(480);
         let this = self.clone();
         relm4_macros::view! {
             content = &adw::ToolbarView {
@@ -59,7 +54,7 @@ impl AdvancedMessageDialog {
                 #[wrap(Some)]
                 set_content: toast_overlay = &adw::ToastOverlay {
                     #[wrap(Some)]
-                    set_child = &adw::Clamp {
+                    set_child = &gtk::ScrolledWindow {
                         #[wrap(Some)]
                         set_child = &gtk::Box {
                             set_margin_top: 8,
@@ -82,22 +77,19 @@ impl AdvancedMessageDialog {
                                 set_xalign: 0.0,
                                 set_halign: gtk::Align::Start,
                             },
-                            append = &gtk::ScrolledWindow {
-                                #[wrap(Some)]
-                                set_child: text_view = &gsv::View {
-                                    add_css_class: "code",
-                                    set_tab_width: 4,
-                                    set_indent_width: 2,
-                                    set_auto_indent: true,
-                                    set_top_margin: 4,
-                                    set_bottom_margin: 4,
-                                    set_left_margin: 4,
-                                    set_right_margin: 4,
-                                    set_hexpand: true,
-                                    set_vexpand: true,
-                                    set_monospace: true,
-                                    set_background_pattern: gsv::BackgroundPatternType::Grid
-                                },
+                            append: text_view = &gsv::View {
+                                add_css_class: "code",
+                                set_tab_width: 4,
+                                set_indent_width: 2,
+                                set_auto_indent: true,
+                                set_top_margin: 4,
+                                set_bottom_margin: 4,
+                                set_left_margin: 4,
+                                set_right_margin: 4,
+                                set_hexpand: true,
+                                set_vexpand: true,
+                                set_monospace: true,
+                                set_background_pattern: gsv::BackgroundPatternType::Grid
                             },
                             append = &gtk::Label {
                                 add_css_class: "heading",
@@ -166,9 +158,9 @@ impl AdvancedMessageDialog {
                                     add_css_class: "circular",
                                     add_css_class: "small",
                                     set_label: "?",
-                                    connect_clicked[this] => move |_| {
+                                    connect_clicked => move |_| {
                                         gtk::UriLauncher::new("https://docs.ntfy.sh/publish/#publish-as-json").launch(
-                                            Some(&this),
+                                            None::<&gtk::Window>,
                                             gio::Cancellable::NONE,
                                             |_| {}
                                         );
@@ -221,6 +213,6 @@ impl AdvancedMessageDialog {
         };
         let scheme = gsv::StyleSchemeManager::default().scheme(scheme_name);
         buffer.set_style_scheme(scheme.as_ref());
-        this.set_content(Some(&content));
+        this.set_child(Some(&content));
     }
 }

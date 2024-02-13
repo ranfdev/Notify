@@ -31,11 +31,6 @@ mod imp {
         type ParentType = adw::Dialog;
 
         fn class_init(klass: &mut Self::Class) {
-            klass.add_binding_action(
-                gtk::gdk::Key::Escape,
-                gtk::gdk::ModifierType::empty(),
-                "window.close",
-            );
             klass.install_action("default.activate", None, |this, _, _| {
                 this.emit_subscribe_request();
             });

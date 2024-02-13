@@ -30,11 +30,6 @@ mod imp {
 
         fn class_init(klass: &mut Self::Class) {
             klass.bind_template();
-            klass.add_binding_action(
-                gtk::gdk::Key::Escape,
-                gtk::gdk::ModifierType::empty(),
-                "window.close",
-            );
         }
 
         // You must call `Widget`'s `init_template()` within `instance_init()`.
