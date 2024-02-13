@@ -200,7 +200,7 @@ impl Subscription {
         self.notify_display_name();
     }
     #[instrument(skip_all)]
-    pub fn set_display_name(&self, value: String) -> Promise<(), capnp::Error> {
+    pub fn set_display_name(&self, value: String) -> Promise<(), anyhow::Error> {
         let this = self.clone();
         Promise::from_future(async move {
             this._set_display_name(value);
@@ -209,7 +209,7 @@ impl Subscription {
         })
     }
 
-    fn send_updated_info(&self) -> Promise<(), capnp::Error> {
+    fn send_updated_info(&self) -> Promise<(), anyhow::Error> {
         let imp = self.imp();
         let mut req = imp.client.get().unwrap().update_info_request();
         let mut val = pry!(req.get().get_value());
@@ -240,7 +240,7 @@ impl Subscription {
         self.notify_unread_count();
     }
 
-    pub fn set_muted(&self, value: bool) -> Promise<(), capnp::Error> {
+    pub fn set_muted(&self, value: bool) -> Promise<(), anyhow::Error> {
         let this = self.clone();
         Promise::from_future(async move {
             this.imp().muted.replace(value);
@@ -249,7 +249,7 @@ impl Subscription {
             Ok(())
         })
     }
-    pub fn flag_all_as_read(&self) -> Promise<(), capnp::Error> {
+    pub fn flag_all_as_read(&self) -> Promise<(), anyhow::Error> {
         let imp = self.imp();
         let Some(value) = Self::last_message(&imp.messages)
             .map(|last| last.time)
@@ -268,11 +268,11 @@ impl Subscription {
             Ok(())
         })
     }
-    pub fn publish_msg(&self, mut msg: models::Message) -> Promise<(), capnp::Error> {
+    pub fn publish_msg(&self, mut msg: models::Message) -> Promise<(), anyhow::Error> {
         let imp = self.imp();
         let json = {
             msg.topic = self.topic();
-            serde_json::to_string(&msg).map_err(|e| capnp::Error::failed(e.to_string()))
+            serde_json::to_string(&msg)
         };
         let mut req = imp.client.get().unwrap().publish_request();
         req.get().set_message(pry!(json).as_str().into());
@@ -284,7 +284,7 @@ impl Subscription {
         })
     }
     #[instrument(skip_all)]
-    pub fn clear_notifications(&self) -> Promise<(), capnp::Error> {
+    pub fn clear_notifications(&self) -> Promise<(), anyhow::Error> {
         let imp = self.imp();
         let req = imp.client.get().unwrap().clear_notifications_request();
         let this = self.clone();

@@ -6,7 +6,7 @@ use glib::Properties;
 use gtk::gio;
 use gtk::glib;
 
-use crate::widgets::*;
+use crate::error::*;
 
 mod imp {
     pub use super::*;
@@ -91,7 +91,7 @@ impl SubscriptionInfoDialog {
     fn update_display_name(&self, entry: &impl IsA<gtk::Editable>) {
         if let Some(sub) = self.subscription() {
             let entry = entry.clone();
-            self.spawn_with_near_toast(async move {
+            self.error_boundary().spawn(async move {
                 let res = sub.set_display_name(entry.text().to_string()).await;
                 res
             });
@@ -100,7 +100,8 @@ impl SubscriptionInfoDialog {
     fn update_muted(&self, switch: &adw::SwitchRow) {
         if let Some(sub) = self.subscription() {
             let switch = switch.clone();
-            self.spawn_with_near_toast(async move { sub.set_muted(switch.is_active()).await })
+            self.error_boundary()
+                .spawn(async move { sub.set_muted(switch.is_active()).await })
         }
     }
 }

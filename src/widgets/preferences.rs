@@ -5,7 +5,7 @@ use adw::subclass::prelude::*;
 use gtk::{gio, glib};
 use ntfy_daemon::ntfy_capnp::system_notifier;
 
-use crate::widgets::*;
+use crate::error::*;
 
 mod imp {
     use super::*;
@@ -90,12 +90,14 @@ impl NotifyPreferences {
         let this = obj.clone();
         obj.imp().add_btn.connect_clicked(move |btn| {
             let this = this.clone();
-            btn.spawn_with_near_toast(async move { this.add_account().await });
+            btn.error_boundary()
+                .spawn(async move { this.add_account().await });
         });
         let this = obj.clone();
         obj.imp()
             .added_accounts
-            .spawn_with_near_toast(async move { this.show_accounts().await });
+            .error_boundary()
+            .spawn(async move { this.show_accounts().await });
         obj
     }
 
@@ -128,9 +130,8 @@ impl NotifyPreferences {
                     let this = this.clone();
                     let username = username.clone();
                     let server = server.clone();
-                    btn.spawn_with_near_toast(async move {
-                        this.remove_account(&server, &username).await
-                    });
+                    btn.error_boundary()
+                        .spawn(async move { this.remove_account(&server, &username).await });
                 });
                 btn
             });

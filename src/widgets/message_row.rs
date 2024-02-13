@@ -7,7 +7,7 @@ use gtk::{gdk, gio, glib};
 use ntfy_daemon::models;
 use tracing::error;
 
-use crate::widgets::window::SpawnWithToast;
+use crate::error::*;
 
 mod imp {
     use super::*;
@@ -177,10 +177,10 @@ impl MessageRow {
         picture.set_height_request(350);
         let picturec = picture.clone();
 
-        self.spawn_with_near_toast(async move {
+        self.error_boundary().spawn(async move {
             let t = r.recv().await?;
             picturec.set_paintable(Some(&t));
-            Ok::<(), anyhow::Error>(())
+            Ok(())
         });
 
         picture

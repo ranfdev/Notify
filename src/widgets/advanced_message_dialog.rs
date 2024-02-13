@@ -5,8 +5,8 @@ use adw::subclass::prelude::*;
 use gsv::prelude::*;
 use gtk::{gio, glib};
 
+use crate::error::*;
 use crate::subscription::Subscription;
-use crate::widgets::*;
 
 mod imp {
     use super::*;
@@ -194,7 +194,7 @@ impl AdvancedMessageDialog {
                                         thisc.imp().subscription.get().unwrap()
                                             .publish_msg(msg).await
                                     };
-                                    toast_overlay.spawn_with_near_toast(f);
+                                    toast_overlay.error_boundary().spawn(f);
                                 }
                             }
                         }

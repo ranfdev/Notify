@@ -2,6 +2,7 @@ mod application;
 #[rustfmt::skip]
 mod config;
 mod async_utils;
+pub mod error;
 mod subscription;
 pub mod widgets;
 

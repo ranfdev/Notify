@@ -11,40 +11,9 @@ use tracing::warn;
 
 use crate::application::NotifyApplication;
 use crate::config::{APP_ID, PROFILE};
+use crate::error::*;
 use crate::subscription::Subscription;
 use crate::widgets::*;
-
-pub trait SpawnWithToast {
-    fn spawn_with_near_toast<T, R: std::fmt::Display>(
-        &self,
-        f: impl Future<Output = Result<T, R>> + 'static,
-    );
-}
-
-impl<W: IsA<gtk::Widget>> SpawnWithToast for W {
-    fn spawn_with_near_toast<T, R: std::fmt::Display>(
-        &self,
-        f: impl Future<Output = Result<T, R>> + 'static,
-    ) {
-        let toast_overlay: Option<adw::ToastOverlay> = self
-            .ancestor(adw::ToastOverlay::static_type())
-            .and_downcast();
-        let win: Option<NotifyWindow> = self.ancestor(NotifyWindow::static_type()).and_downcast();
-        glib::MainContext::ref_thread_default().spawn_local_with_priority(
-            glib::Priority::DEFAULT_IDLE,
-            async move {
-                if let Err(e) = f.await {
-                    if let Some(o) = toast_overlay
-                        .as_ref()
-                        .or_else(|| win.as_ref().map(|win| win.imp().toast_overlay.as_ref()))
-                    {
-                        o.add_toast(adw::Toast::builder().title(&e.to_string()).build())
-                    }
-                }
-            },
-        );
-    }
-}
 
 mod imp {
     use super::*;
@@ -169,7 +138,7 @@ mod imp {
             });
             klass.install_action("win.clear-notifications", None, |this, _, _| {
                 this.selected_subscription().map(|sub| {
-                    this.spawn_with_near_toast(sub.clear_notifications());
+                    this.error_boundary().spawn(sub.clear_notifications());
                 });
             });
             //klass.bind_template_instance_callbacks();
@@ -252,7 +221,10 @@ impl NotifyWindow {
                     ..models::Message::default()
                 });
 
-            entry.spawn_with_near_toast(async move { p.await });
+            entry.error_boundary().spawn(async move {
+                p.await?;
+                Ok(())
+            });
         };
         let publishc = publish.clone();
         imp.entry.connect_activate(move |_| publishc());
@@ -294,7 +266,7 @@ impl NotifyWindow {
         req.get().set_topic(sub.topic.as_str().into());
         let res = req.send();
         let this = self.clone();
-        self.spawn_with_near_toast(async move {
+        self.error_boundary().spawn(async move {
             let imp = this.imp();
 
             // Subscription::new will use the pipelined client to retrieve info about the subscription
@@ -306,7 +278,7 @@ impl NotifyWindow {
             let i = imp.subscription_list_model.n_items() - 1;
             let row = imp.subscription_list.row_at_index(i as i32);
             imp.subscription_list.select_row(row.as_ref());
-            Ok::<(), capnp::Error>(())
+            Ok(())
         });
     }
 
@@ -320,14 +292,14 @@ impl NotifyWindow {
         let res = req.send();
         let this = self.clone();
 
-        self.spawn_with_near_toast(async move {
+        self.error_boundary().spawn(async move {
             let imp = this.imp();
             res.promise.await?;
 
             if let Some(i) = imp.subscription_list_model.find(&sub) {
                 imp.subscription_list_model.remove(i);
             }
-            Ok::<(), capnp::Error>(())
+            Ok(())
         });
     }
     fn notifier(&self) -> &system_notifier::Client {
@@ -358,14 +330,14 @@ impl NotifyWindow {
         let this = self.clone();
         let req = self.notifier().list_subscriptions_request();
         let res = req.send();
-        self.spawn_with_near_toast(async move {
+        self.error_boundary().spawn(async move {
             let list = res.promise.await?;
             let list = list.get()?.get_list()?;
             let imp = this.imp();
             for sub in list {
                 imp.subscription_list_model.append(&Subscription::new(sub?));
             }
-            Ok::<(), capnp::Error>(())
+            Ok(())
         });
     }
     fn update_banner(&self, sub: Option<&Subscription>) {
@@ -429,7 +401,8 @@ impl NotifyWindow {
             || ((vadj.page_size() + vadj.value() - vadj.upper()).abs() <= 1.0)
         {
             self.selected_subscription().map(|sub| {
-                self.spawn_with_near_toast(sub.flag_all_as_read());
+                self.error_boundary()
+                    .spawn(sub.flag_all_as_read().map_err(|e| e.into()));
             });
         }
     }
