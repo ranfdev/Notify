@@ -221,8 +221,10 @@ impl NotifyWindow {
                     ..models::Message::default()
                 });
 
+            let e = entry.clone();
             entry.error_boundary().spawn(async move {
                 p.await?;
+                e.set_text("");
                 Ok(())
             });
         };
