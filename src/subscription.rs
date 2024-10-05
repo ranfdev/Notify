@@ -4,13 +4,13 @@ use std::rc::Rc;
 use adw::prelude::*;
 use capnp::capability::Promise;
 use capnp_rpc::pry;
-use glib::once_cell::sync::Lazy;
 use glib::subclass::prelude::*;
 use glib::subclass::Signal;
 use glib::Properties;
 use gtk::{gio, glib};
 use ntfy_daemon::models;
 use ntfy_daemon::ntfy_capnp::{output_channel, subscription, watch_handle, Status};
+use once_cell::sync::Lazy;
 use tracing::{debug, debug_span, error, instrument};
 
 struct TopicWatcher {

@@ -163,7 +163,7 @@ impl MessageRow {
             } => {
                 btn.set_label(&label);
                 btn.set_tooltip_text(Some(&format!("Send HTTP {method} to {url}")));
-                let (tx, rx) = glib::MainContext::channel(Default::default());
+                let (tx, rx) = async_channel::unbounded();
                 let this = self.clone();
                 btn.connect_clicked({
                     let url = url.clone();
@@ -179,23 +179,24 @@ impl MessageRow {
                             for (k, v) in headers.iter() {
                                 req = req.set(&k, &v);
                             }
-                            tx.send(req.send(body.as_bytes())).unwrap();
+                            tx.send_blocking(req.send(body.as_bytes())).unwrap();
                         });
                     }
                 });
-                rx.attach(Some(&glib::MainContext::default()), move |res| {
-                    let method = method.clone();
-                    let url = url.clone();
-                    this.spawn_with_near_toast(async move {
-                        match res {
-                            Err(e) => {
-                                error!(error = ?e, "Error sending request");
-                                Err(format!("Error sending HTTP {method} to {url}"))
+                glib::MainContext::default().spawn_local(async move {
+                    while let Ok(res) = rx.recv().await {
+                        let method = method.clone();
+                        let url = url.clone();
+                        this.spawn_with_near_toast(async move {
+                            match res {
+                                Err(e) => {
+                                    error!(error = ?e, "Error sending request");
+                                    Err(format!("Error sending HTTP {method} to {url}"))
+                                }
+                                Ok(_) => Ok(()),
                             }
-                            Ok(_) => Ok(()),
-                        }
-                    });
-                    glib::ControlFlow::Continue
+                        });
+                    }
                 });
             }
             models::Action::Broadcast { label, .. } => {

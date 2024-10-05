@@ -34,7 +34,6 @@ mod imp {
                 gtk::gdk::Key::Escape,
                 gtk::gdk::ModifierType::empty(),
                 "window.close",
-                None,
             );
         }
 
@@ -49,12 +48,13 @@ mod imp {
             self.parent_constructed();
             let this = self.obj().clone();
 
-            let (tx, rx) = glib::MainContext::channel(glib::Priority::default());
+            let (tx, rx) = async_channel::unbounded();
             let rx =
                 crate::async_utils::debounce_channel(std::time::Duration::from_millis(500), rx);
-            rx.attach(None, move |entry| {
-                this.update_display_name(&entry);
-                glib::ControlFlow::Continue
+            glib::MainContext::default().spawn_local(async move {
+                while let Ok(entry) = rx.recv().await {
+                    this.update_display_name(&entry);
+                }
             });
 
             let this = self.obj().clone();
@@ -65,7 +65,7 @@ mod imp {
 
             self.display_name_entry.connect_changed({
                 move |entry| {
-                    tx.send(entry.clone()).unwrap();
+                    tx.send_blocking(entry.clone()).unwrap();
                 }
             });
             let this = self.obj().clone();

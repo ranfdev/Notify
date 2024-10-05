@@ -1,10 +1,10 @@
 use adw::prelude::*;
 use adw::subclass::prelude::*;
-use glib::once_cell::sync::Lazy;
 use glib::subclass::Signal;
 use glib::Properties;
 use gtk::gio;
 use gtk::glib;
+use once_cell::sync::Lazy;
 
 mod imp {
     pub use super::*;
@@ -28,7 +28,6 @@ mod imp {
                 gtk::gdk::Key::Escape,
                 gtk::gdk::ModifierType::empty(),
                 "window.close",
-                None,
             );
             klass.install_action("default.activate", None, |this, _, _| {
                 this.emit_subscribe_request();

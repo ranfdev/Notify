@@ -21,7 +21,7 @@ pub trait SpawnWithToast {
     );
 }
 
-impl<W: glib::IsA<gtk::Widget>> SpawnWithToast for W {
+impl<W: IsA<gtk::Widget>> SpawnWithToast for W {
     fn spawn_with_near_toast<T, R: std::fmt::Display>(
         &self,
         f: impl Future<Output = Result<T, R>> + 'static,
@@ -394,7 +394,7 @@ impl NotifyWindow {
         chip
     }
 
-    fn build_subscription_ui(sub: &Subscription) -> impl glib::IsA<gtk::Widget> {
+    fn build_subscription_ui(sub: &Subscription) -> impl IsA<gtk::Widget> {
         let b = gtk::Box::builder().spacing(8).build();
 
         let label = gtk::Label::builder()

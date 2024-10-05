@@ -1,12 +1,12 @@
 use std::path::Path;
 
+use adw::prelude::*;
 use adw::subclass::prelude::*;
 use capnp_rpc::{rpc_twoparty_capnp, twoparty, RpcSystem};
 use futures::AsyncReadExt;
 use gettextrs::gettext;
 use gio::SocketClient;
 use gio::UnixSocketAddress;
-use gtk::prelude::*;
 use gtk::{gdk, gio, glib};
 use ntfy_daemon::ntfy_capnp::system_notifier;
 use tracing::{debug, info};
@@ -145,19 +145,17 @@ impl NotifyApplication {
     }
 
     fn show_about_dialog(&self) {
-        let dialog = adw::AboutWindow::builder()
+        let dialog = adw::AboutDialog::builder()
             .application_icon(APP_ID)
             .application_name("Notify")
             .license_type(gtk::License::Gpl30)
             .version(VERSION)
-            .transient_for(&self.main_window())
             .translator_credits(gettext("translator-credits"))
-            .modal(true)
             .developers(vec!["ranfdev"])
             .artists(vec!["ranfdev"])
             .build();
 
-        dialog.present();
+        dialog.present(Some(&self.main_window()));
     }
 
     pub fn run(&self) -> glib::ExitCode {
