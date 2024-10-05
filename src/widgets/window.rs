@@ -94,7 +94,7 @@ mod imp {
             let this = self.obj().clone();
             let dialog =
                 AddSubscriptionDialog::new(this.selected_subscription().map(|x| x.server()));
-            dialog.present(&self.obj().clone());
+            dialog.present(Some(&self.obj().clone()));
 
             let dc = dialog.clone();
             dialog.connect_local("subscribe-request", true, move |_| {
@@ -236,13 +236,13 @@ impl NotifyWindow {
         imp.code_btn.connect_clicked(move |_| {
             let this = this.clone();
             this.selected_subscription().map(move |sub| {
-                AdvancedMessageDialog::new(sub, this.imp().entry.text().to_string()).present(&this)
+                AdvancedMessageDialog::new(sub, this.imp().entry.text().to_string()).present(Some(&this))
             });
         });
     }
     fn show_subscription_info(&self) {
         let sub = SubscriptionInfoDialog::new(self.selected_subscription().unwrap());
-        sub.present(self);
+        sub.present(Some(self));
     }
     fn connect_items_changed(&self) {
         let this = self.clone();

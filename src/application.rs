@@ -222,7 +222,7 @@ impl NotifyApplication {
             None,
         );
         if let Some(w) = self.imp().window.borrow().upgrade() {
-            dialog.present(&w);
+            dialog.present(Some(&w));
         }
     }
 
@@ -230,7 +230,7 @@ impl NotifyApplication {
         let win = crate::widgets::NotifyPreferences::new(
             self.main_window().imp().notifier.get().unwrap().clone(),
         );
-        win.present(&self.main_window());
+        win.present(Some(&self.main_window()));
     }
 
     pub fn run(&self) -> glib::ExitCode {

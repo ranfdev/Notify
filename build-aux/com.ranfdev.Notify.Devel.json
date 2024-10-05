@@ -1,11 +1,11 @@
 {
     "id": "com.ranfdev.Notify.Devel",
     "runtime": "org.gnome.Platform",
-    "runtime-version": "master",
+    "runtime-version": "47",
     "sdk": "org.gnome.Sdk",
     "sdk-extensions": [
         "org.freedesktop.Sdk.Extension.rust-stable",
-        "org.freedesktop.Sdk.Extension.llvm16"
+        "org.freedesktop.Sdk.Extension.llvm18"
     ],
     "command": "notify",
     "finish-args": [
@@ -20,7 +20,7 @@
         "--talk-name=org.freedesktop.Notifications"
     ],
     "build-options": {
-        "append-path": "/usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/llvm16/bin",
+        "append-path": "/usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/llvm18/bin",
         "build-args": [
             "--share=network"
         ],
