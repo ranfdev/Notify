@@ -22,7 +22,7 @@ anyhow = "1.0.71"
 tokio-stream = { version = "0.1.14", features = ["io-util", "time"] }
 rusqlite = "0.29.0"
 rand = "0.8.5"
-reqwest = { version = "0.11.18", features = ["stream", "rustls-tls"]}
+reqwest = { version = "0.11.18", features = ["stream", "rustls-tls-native-roots"]}
 url = "2.4.0"
 ashpd = "0.6.0"
 generational-arena = "0.2.9"
