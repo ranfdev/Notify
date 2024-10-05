@@ -236,7 +236,8 @@ impl NotifyWindow {
         imp.code_btn.connect_clicked(move |_| {
             let this = this.clone();
             this.selected_subscription().map(move |sub| {
-                AdvancedMessageDialog::new(sub, this.imp().entry.text().to_string()).present(Some(&this))
+                AdvancedMessageDialog::new(sub, this.imp().entry.text().to_string())
+                    .present(Some(&this))
             });
         });
     }
