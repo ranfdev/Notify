@@ -1,7 +1,7 @@
 project(
   'notify',
   'rust',
-  version: '0.1.5',
+  version: '0.1.6',
   meson_version: '>= 0.59',
   # license: 'MIT',
 )

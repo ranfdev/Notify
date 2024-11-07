@@ -26,6 +26,12 @@
 
   <content_rating type="oars-1.0" />
   <releases>
+    <release version="0.1.6" date="2024-11-24">
+      <ul>
+        <li>Fixed issue handling custom local certificates with https</li>
+        <li>Updated GNOME sdk</li>
+      </ul>
+    </release>
     <release version="0.1.5" date="2024-01-03">
       <ul>
         <li>Fixed about window crashing</li>
