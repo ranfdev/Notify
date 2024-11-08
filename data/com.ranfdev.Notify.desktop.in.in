@@ -4,7 +4,7 @@ Comment=ntfy.sh client application to receive everyday's notifications
 Type=Application
 Exec=notify
 Terminal=false
-Categories=GNOME;GTK;
+Categories=GNOME;GTK;Internet;Utility;
 # Translators: Search terms to find this application. Do NOT translate or localize the semicolons! The list MUST also end with a semicolon!
 Keywords=Gnome;GTK;
 # Translators: Do NOT translate or transliterate this text (this is an icon file name)!

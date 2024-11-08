@@ -10,6 +10,12 @@
   <description>
     <p>Versatile GTK4 client designed to seamlessly interface with the ntfy.sh notification service</p>
   </description>
+  <categories>
+    <category>Internet</category>
+    <category>Utility</category>
+    <category>GTK</category>
+    <category>GNOME</category>
+  </categories>
   <screenshots>
     <screenshot type="default">
       <image>https://raw.githubusercontent.com/ranfdev/Notify/main/data/screenshots/1.png</image>
@@ -27,37 +33,47 @@
   <content_rating type="oars-1.0" />
   <releases>
     <release version="0.1.6" date="2024-11-24">
-      <ul>
-        <li>Fixed issue handling custom local certificates with https</li>
-        <li>Updated GNOME sdk</li>
-      </ul>
+      <description>
+        <ul>
+          <li>Fixed issue handling custom local certificates with https</li>
+          <li>Updated GNOME sdk</li>
+        </ul>
+      </description>
     </release>
     <release version="0.1.5" date="2024-01-03">
-      <ul>
-        <li>Fixed about window crashing</li>
-      </ul>
+      <description>
+        <ul>
+          <li>Fixed about window crashing</li>
+        </ul>
+      </description>
     </release>
     <release version="0.1.4" date="2023-11-27">
-      <ul>
-        <li>Various bugfixes</li>
-      </ul>
+      <description>
+        <ul>
+          <li>Various bugfixes</li>
+        </ul>
+      </description>
     </release>
     <release version="0.1.3" date="2023-11-16">
-      <ul>
-        <li>Support for basic authentication with custom accounts</li>
-        <li>Custom server field is now prefilled when appropriate</li>
-      </ul>
+      <description>
+        <ul>
+          <li>Support for basic authentication with custom accounts</li>
+          <li>Custom server field is now prefilled when appropriate</li>
+        </ul>
+      </description>
     </release>
     <release version="0.1.2" date="2023-11-07">
-      <ul>
-        <li>Introduced dialog to write advanced messages</li>
-        <li>Automatic download of attached images</li>
-        <li>Introduced support for action buttons in the notifications</li>
-        <li>Improved performance of the message list layout</li>
-        <li>Improved design for status chips</li>
-        <li>Improved design for the message bar</li>
-        <li>Various bug fixes</li>
-      </ul>
+      <description>
+        <ul>
+          <li>Introduced dialog to write advanced messages</li>
+          <li>Automatic download of attached images</li>
+          <li>Introduced support for action buttons in the notifications</li>
+          <li>Improved performance of the message list layout</li>
+          <li>Improved design for status chips</li>
+          <li>Improved design for the message bar</li>
+          <li>Various bug fixes</li>
+        </ul>
+      </description>
     </release>
     <release version="0.1.1" date="2023-10-24" />
     <release version="0.1.0" date="2023-10-13" />
