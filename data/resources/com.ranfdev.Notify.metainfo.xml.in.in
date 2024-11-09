@@ -11,7 +11,7 @@
     <p>Versatile GTK4 client designed to seamlessly interface with the ntfy.sh notification service</p>
   </description>
   <categories>
-    <category>Internet</category>
+    <category>Network</category>
     <category>Utility</category>
     <category>GTK</category>
     <category>GNOME</category>
