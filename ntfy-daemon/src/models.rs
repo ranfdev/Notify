@@ -318,6 +318,12 @@ impl From<Status> for u8 {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct Account {
+    pub server: String,
+    pub username: String
+}
+
 pub struct Notification {
     pub title: String,
     pub body: String,

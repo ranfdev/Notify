@@ -23,6 +23,7 @@ mod imp {
     use std::cell::RefCell;
 
     use glib::WeakRef;
+    use ntfy_daemon::Ntfy;
     use once_cell::sync::OnceCell;
 
     use super::*;
@@ -32,6 +33,7 @@ mod imp {
         pub window: RefCell<WeakRef<NotifyWindow>>,
         pub socket_path: RefCell<PathBuf>,
         pub hold_guard: OnceCell<gio::ApplicationHoldGuard>,
+        pub ntfy: OnceCell<Ntfy>,
     }
 
     #[glib::object_subclass]
@@ -227,10 +229,10 @@ impl NotifyApplication {
     }
 
     fn show_preferences(&self) {
-        let win = crate::widgets::NotifyPreferences::new(
-            self.main_window().imp().notifier.get().unwrap().clone(),
-        );
-        win.present(Some(&self.main_window()));
+        // let win = crate::widgets::NotifyPreferences::new(
+        //     self.main_window().imp().notifier.get().unwrap().clone(),
+        // );
+        // win.present(Some(&self.main_window()));
     }
 
     pub fn run(&self) -> glib::ExitCode {
@@ -317,42 +319,25 @@ impl NotifyApplication {
             }
         }
         let proxies = std::sync::Arc::new(Proxies { notification: s });
-        ntfy_daemon::system_client::start(
+        let ntfy = ntfy_daemon::Ntfy::start(
             socket_path.to_owned(),
             dbpath.to_str().unwrap(),
             proxies.clone(),
             proxies,
         )
         .unwrap();
+        self.imp()
+            .ntfy
+            .set(ntfy)
+            .or(Err(anyhow::anyhow!("failed setting ntfy")))
+            .unwrap();
         self.imp().hold_guard.set(self.hold()).unwrap();
     }
 
     fn build_window(&self, socket_path: &Path) {
-        let address = UnixSocketAddress::new(socket_path);
-        let client = SocketClient::new();
-        let connection =
-            SocketClientExt::connect(&client, &address, gio::Cancellable::NONE).unwrap();
+        let ntfy = self.imp().ntfy.get().unwrap();
 
-        let rw = connection.into_async_read_write().unwrap();
-        let (reader, writer) = rw.split();
-
-        let rpc_network = Box::new(twoparty::VatNetwork::new(
-            reader,
-            writer,
-            rpc_twoparty_capnp::Side::Client,
-            Default::default(),
-        ));
-        let mut rpc_system = RpcSystem::new(rpc_network, None);
-        let client: system_notifier::Client =
-            rpc_system.bootstrap(rpc_twoparty_capnp::Side::Server);
-
-        glib::MainContext::default().spawn_local(async move {
-            debug!("rpc_system started");
-            rpc_system.await.unwrap();
-            debug!("rpc_system stopped");
-        });
-
-        let window = NotifyWindow::new(self, client);
+        let window = NotifyWindow::new(self, ntfy.clone());
         *self.imp().window.borrow_mut() = window.downgrade();
     }
 }

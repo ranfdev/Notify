@@ -4,17 +4,27 @@ pub mod models;
 pub mod retry;
 pub mod system_client;
 pub mod topic_listener;
+mod http_client;
+mod output_tracker;
+mod listener;
+mod ntfy;
+
+pub use ntfy::Ntfy;
+
 pub mod ntfy_capnp {
     include!(concat!(env!("OUT_DIR"), "/src/ntfy_capnp.rs"));
 }
 
 use std::sync::Arc;
 
+use http_client::HttpClient;
+
 #[derive(Clone)]
 pub struct SharedEnv {
     db: message_repo::Db,
     proxy: Arc<dyn models::NotificationProxy>,
     http: reqwest::Client,
+    nullable_http: HttpClient,
     network: Arc<dyn models::NetworkMonitorProxy>,
     credentials: credentials::Credentials,
 }

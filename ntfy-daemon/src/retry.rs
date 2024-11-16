@@ -53,4 +53,8 @@ impl WaitExponentialRandom {
         sleep(self.next_delay()).await;
         self.i += 1;
     }
+
+    pub fn count(&self) -> u64 {
+        self.i
+    }
 }

@@ -14,8 +14,9 @@ use tokio::net::UnixListener;
 use tokio::sync::mpsc;
 use tracing::{error, info, warn};
 
+use crate::http_client::HttpClient;
 use crate::models::Message;
-use crate::Error;
+use crate::{http_client, Error};
 use crate::SharedEnv;
 use crate::{
     message_repo::Db,
@@ -370,6 +371,7 @@ impl SystemNotifier {
                 db: Db::connect(dbpath).unwrap(),
                 proxy: notification_proxy,
                 http: build_client().unwrap(),
+                nullable_http: HttpClient::new(build_client().unwrap()),
                 network,
                 credentials,
             },

@@ -7,6 +7,7 @@ use futures::prelude::*;
 use gtk::{gio, glib};
 use ntfy_daemon::models;
 use ntfy_daemon::ntfy_capnp::{system_notifier, Status};
+use ntfy_daemon::Ntfy;
 use tracing::warn;
 
 use crate::application::NotifyApplication;
@@ -52,7 +53,7 @@ mod imp {
         pub send_btn: TemplateChild<gtk::Button>,
         #[template_child]
         pub code_btn: TemplateChild<gtk::Button>,
-        pub notifier: OnceCell<system_notifier::Client>,
+        pub notifier: OnceCell<Ntfy>,
         pub conn: OnceCell<gio::SocketConnection>,
         pub settings: gio::Settings,
         pub banner_binding: Cell<Option<(Subscription, glib::SignalHandlerId)>>,
@@ -190,7 +191,7 @@ glib::wrapper! {
 }
 
 impl NotifyWindow {
-    pub fn new(app: &NotifyApplication, notifier: system_notifier::Client) -> Self {
+    pub fn new(app: &NotifyApplication, notifier: Ntfy) -> Self {
         let obj: Self = glib::Object::builder().property("application", app).build();
 
         if let Err(_) = obj.imp().notifier.set(notifier) {
@@ -260,49 +261,49 @@ impl NotifyWindow {
     }
 
     fn add_subscription(&self, sub: models::Subscription) {
-        let mut req = self.notifier().subscribe_request();
+        // let mut req = self.notifier().subscribe_request();
 
-        req.get().set_server(sub.server.as_str().into());
-        req.get().set_topic(sub.topic.as_str().into());
-        let res = req.send();
-        let this = self.clone();
-        self.error_boundary().spawn(async move {
-            let imp = this.imp();
+        // req.get().set_server(sub.server.as_str().into());
+        // req.get().set_topic(sub.topic.as_str().into());
+        // let res = req.send();
+        // let this = self.clone();
+        // self.error_boundary().spawn(async move {
+        //     let imp = this.imp();
 
-            // Subscription::new will use the pipelined client to retrieve info about the subscription
-            let subscription = Subscription::new(res.pipeline.get_subscription());
-            // We want to still check if there were any errors adding the subscription.
-            res.promise.await?;
+        //     // Subscription::new will use the pipelined client to retrieve info about the subscription
+        //     let subscription = Subscription::new(res.pipeline.get_subscription());
+        //     // We want to still check if there were any errors adding the subscription.
+        //     res.promise.await?;
 
-            imp.subscription_list_model.append(&subscription);
-            let i = imp.subscription_list_model.n_items() - 1;
-            let row = imp.subscription_list.row_at_index(i as i32);
-            imp.subscription_list.select_row(row.as_ref());
-            Ok(())
-        });
+        //     imp.subscription_list_model.append(&subscription);
+        //     let i = imp.subscription_list_model.n_items() - 1;
+        //     let row = imp.subscription_list.row_at_index(i as i32);
+        //     imp.subscription_list.select_row(row.as_ref());
+        //     Ok(())
+        // });
     }
 
     fn unsubscribe(&self) {
-        let mut req = self.notifier().unsubscribe_request();
-        let sub = self.selected_subscription().unwrap();
+        // let mut req = self.notifier().unsubscribe_request();
+        // let sub = self.selected_subscription().unwrap();
 
-        req.get().set_server(sub.server().as_str().into());
-        req.get().set_topic(sub.topic().as_str().into());
+        // req.get().set_server(sub.server().as_str().into());
+        // req.get().set_topic(sub.topic().as_str().into());
 
-        let res = req.send();
-        let this = self.clone();
+        // let res = req.send();
+        // let this = self.clone();
 
-        self.error_boundary().spawn(async move {
-            let imp = this.imp();
-            res.promise.await?;
+        // self.error_boundary().spawn(async move {
+        //     let imp = this.imp();
+        //     res.promise.await?;
 
-            if let Some(i) = imp.subscription_list_model.find(&sub) {
-                imp.subscription_list_model.remove(i);
-            }
-            Ok(())
-        });
+        //     if let Some(i) = imp.subscription_list_model.find(&sub) {
+        //         imp.subscription_list_model.remove(i);
+        //     }
+        //     Ok(())
+        // });
     }
-    fn notifier(&self) -> &system_notifier::Client {
+    fn notifier(&self) -> &Ntfy {
         self.imp().notifier.get().unwrap()
     }
     fn selected_subscription(&self) -> Option<Subscription> {
@@ -313,32 +314,32 @@ impl NotifyWindow {
             .and_downcast::<Subscription>()
     }
     fn bind_message_list(&self) {
-        let imp = self.imp();
+        // let imp = self.imp();
 
-        imp.subscription_list
-            .bind_model(Some(&imp.subscription_list_model), |obj| {
-                let sub = obj.downcast_ref::<Subscription>().unwrap();
+        // imp.subscription_list
+        //     .bind_model(Some(&imp.subscription_list_model), |obj| {
+        //         let sub = obj.downcast_ref::<Subscription>().unwrap();
 
-                Self::build_subscription_row(&sub).upcast()
-            });
+        //         Self::build_subscription_row(&sub).upcast()
+        //     });
 
-        let this = self.clone();
-        imp.subscription_list.connect_row_selected(move |_, _row| {
-            this.selected_subscription_changed(this.selected_subscription().as_ref());
-        });
+        // let this = self.clone();
+        // imp.subscription_list.connect_row_selected(move |_, _row| {
+        //     this.selected_subscription_changed(this.selected_subscription().as_ref());
+        // });
 
-        let this = self.clone();
-        let req = self.notifier().list_subscriptions_request();
-        let res = req.send();
-        self.error_boundary().spawn(async move {
-            let list = res.promise.await?;
-            let list = list.get()?.get_list()?;
-            let imp = this.imp();
-            for sub in list {
-                imp.subscription_list_model.append(&Subscription::new(sub?));
-            }
-            Ok(())
-        });
+        // let this = self.clone();
+        // let req = self.notifier().list_subscriptions_request();
+        // let res = req.send();
+        // self.error_boundary().spawn(async move {
+        //     let list = res.promise.await?;
+        //     let list = list.get()?.get_list()?;
+        //     let imp = this.imp();
+        //     for sub in list {
+        //         imp.subscription_list_model.append(&Subscription::new(sub?));
+        //     }
+        //     Ok(())
+        // });
     }
     fn update_banner(&self, sub: Option<&Subscription>) {
         let imp = self.imp();
