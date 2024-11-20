@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::sync::Arc;
 use std::thread::JoinHandle;
-use std::{time::Duration};
+use std::time::Duration;
 
 use futures::{StreamExt, TryStreamExt};
 use serde::{Deserialize, Serialize};
@@ -11,7 +11,7 @@ use tokio::sync::RwLock;
 use tokio::task::{self, spawn_local, AbortHandle, LocalSet};
 use tokio::{
     select,
-    sync::{mpsc, watch, oneshot},
+    sync::{mpsc, oneshot, watch},
 };
 use tokio_stream::wrappers::LinesStream;
 use tracing::{debug, error, info};
@@ -36,9 +36,7 @@ pub enum ServerEvent {
         topic: String,
     },
     #[serde(rename = "message")]
-    Message (
-        models::Message,
-    ),
+    Message(models::Message),
     #[serde(rename = "keepalive")]
     KeepAlive {
         id: String,
@@ -116,9 +114,7 @@ pub struct ListenerActor {
 }
 
 impl ListenerActor {
-    pub fn new(
-        config: ListenerConfig,
-    ) -> ListenerHandle {
+    pub fn new(config: ListenerConfig) -> ListenerHandle {
         let (event_tx, event_rx) = async_channel::bounded(64);
         let (commands_tx, commands_rx) = mpsc::channel(1);
 
@@ -127,7 +123,6 @@ impl ListenerActor {
         // use a new local set to isolate panics
         let local_set = LocalSet::new();
         local_set.spawn_local(async move {
-
             let this = Self {
                 event_tx,
                 commands_rx: Some(commands_rx),
@@ -149,41 +144,44 @@ impl ListenerActor {
     }
 
     pub async fn run_loop(mut self) {
-            let mut commands_rx = self.commands_rx.take().unwrap();
-            loop {
-                select! {
-                    _ = self.run_supervised_loop() => {
-                        // the supervised loop cannot fail. If it finished, don't restart.
-                        break;
-                    },
-                    cmd = commands_rx.recv() => {
-                        match cmd {
-                            Some(ListenerCommand::Restart) => {
-                                info!("Received restart command");
-                                continue;
-                            }
-                            Some(ListenerCommand::Shutdown) => {
-                                info!("Received shutdown command");
-                                break;
-                            }
-                            Some(ListenerCommand::GetState(tx)) => {
-                                info!("Received get state command");
-                                let state = self.state.clone();
-                                let _ = tx.send(state);
-                            }
-                            None => {
-                                error!("Channel closed for ListenerActor");
-                                break;
-                            }
+        let mut commands_rx = self.commands_rx.take().unwrap();
+        loop {
+            select! {
+                _ = self.run_supervised_loop() => {
+                    // the supervised loop cannot fail. If it finished, don't restart.
+                    break;
+                },
+                cmd = commands_rx.recv() => {
+                    match cmd {
+                        Some(ListenerCommand::Restart) => {
+                            info!("Received restart command");
+                            continue;
+                        }
+                        Some(ListenerCommand::Shutdown) => {
+                            info!("Received shutdown command");
+                            break;
+                        }
+                        Some(ListenerCommand::GetState(tx)) => {
+                            info!("Received get state command");
+                            let state = self.state.clone();
+                            let _ = tx.send(state);
+                        }
+                        None => {
+                            error!("Channel closed for ListenerActor");
+                            break;
                         }
                     }
                 }
             }
+        }
     }
 
     async fn set_state(&mut self, state: ConnectionState) {
         self.state = state.clone();
-        self.event_tx.send(ListenerEvent::ConnectionStateChanged(state)).await.unwrap();
+        self.event_tx
+            .send(ListenerEvent::ConnectionStateChanged(state))
+            .await
+            .unwrap();
     }
     async fn run_supervised_loop(&mut self) {
         dbg!("supervised");
@@ -208,7 +206,8 @@ impl ListenerActor {
                     retry_count: retry.count(),
                     delay: retry.next_delay(),
                     error: Some(Arc::new(e)),
-                }).await;
+                })
+                .await;
                 info!(delay = ?retry.next_delay(), "restarting");
                 retry.wait().await;
             } else {
@@ -236,9 +235,7 @@ impl ListenerActor {
         let stream = response_lines(reader).await?;
         tokio::pin!(stream);
 
-        self.set_state(
-                ConnectionState::Connected,
-            ).await;
+        self.set_state(ConnectionState::Connected).await;
 
         info!(topic = %&self.config.topic, "listening");
         while let Some(msg) = stream.next().await {
@@ -254,7 +251,10 @@ impl ListenerActor {
             match event {
                 ServerEvent::Message(msg) => {
                     debug!("message event");
-                    self.event_tx.send(ListenerEvent::Message(msg)).await.unwrap();
+                    self.event_tx
+                        .send(ListenerEvent::Message(msg))
+                        .await
+                        .unwrap();
                 }
                 ServerEvent::KeepAlive { .. } => {
                     debug!("keepalive event");
@@ -283,7 +283,10 @@ impl ListenerHandle {
     // the response will be sent as an event in self.events
     pub async fn request_state(&self) -> ConnectionState {
         let (tx, rx) = oneshot::channel();
-        self.commands.send(ListenerCommand::GetState(tx)).await.unwrap();
+        self.commands
+            .send(ListenerCommand::GetState(tx))
+            .await
+            .unwrap();
         rx.await.unwrap()
     }
 }
@@ -336,7 +339,6 @@ mod tests {
 
                 let mut listener = ListenerActor::new(config.clone());
                 let items: Vec<_> = listener.events.take(3).collect().await;
-                
 
                 dbg!(&items);
                 assert!(matches!(
@@ -355,7 +357,7 @@ mod tests {
                 //     ListenerEvent::Connected { .. },
                 // ));
             });
-            local_set.await;
+        local_set.await;
     }
 
     #[tokio::test]
@@ -400,23 +402,22 @@ mod tests {
     #[tokio::test]
     async fn integration_connects_sends_receives_simple() {
         let local_set = LocalSet::new();
-        local_set
-            .spawn_local(async {
-                let http_client = HttpClient::new(reqwest::Client::new());
-                let credentials = Credentials::new_nullable(vec![]).await.unwrap();
+        local_set.spawn_local(async {
+            let http_client = HttpClient::new(reqwest::Client::new());
+            let credentials = Credentials::new_nullable(vec![]).await.unwrap();
 
-                let config = ListenerConfig {
-                    http_client,
-                    credentials,
-                    endpoint: "http://localhost:8000".to_string(),
-                    topic: "test".to_string(),
-                    since: 0,
-                };
+            let config = ListenerConfig {
+                http_client,
+                credentials,
+                endpoint: "http://localhost:8000".to_string(),
+                topic: "test".to_string(),
+                since: 0,
+            };
 
-                let mut listener = ListenerActor::new(config.clone());
+            let mut listener = ListenerActor::new(config.clone());
 
-                // assert_event_matches!(listener, ListenerEvent::Connected { .. },);
-            });
-            local_set.await;
+            // assert_event_matches!(listener, ListenerEvent::Connected { .. },);
+        });
+        local_set.await;
     }
 }

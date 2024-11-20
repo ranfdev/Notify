@@ -78,7 +78,7 @@ glib::wrapper! {
 }
 
 impl NotifyPreferences {
-    pub fn new(notifier: ntfy_daemon::NtfyHandle ) -> Self {
+    pub fn new(notifier: ntfy_daemon::NtfyHandle) -> Self {
         let obj: Self = glib::Object::builder().build();
         obj.imp()
             .notifier
@@ -107,7 +107,6 @@ impl NotifyPreferences {
 
         imp.added_accounts.remove_all();
         for a in accounts {
-
             let row = adw::ActionRow::builder()
                 .title(&a.server)
                 .subtitle(&a.username)
@@ -137,13 +136,22 @@ impl NotifyPreferences {
         let server = imp.server_entry.text();
         let username = imp.username_entry.text();
 
-        imp.notifier.get().unwrap().add_account(&server, &username, &password).await?;
+        imp.notifier
+            .get()
+            .unwrap()
+            .add_account(&server, &username, &password)
+            .await?;
         self.show_accounts().await?;
 
         Ok(())
     }
     pub async fn remove_account(&self, server: &str) -> anyhow::Result<()> {
-        self.imp().notifier.get().unwrap().remove_account(server).await?;
+        self.imp()
+            .notifier
+            .get()
+            .unwrap()
+            .remove_account(server)
+            .await?;
         self.show_accounts().await?;
         Ok(())
     }

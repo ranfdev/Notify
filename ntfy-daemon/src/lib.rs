@@ -1,18 +1,18 @@
 pub mod credentials;
+mod http_client;
+mod listener;
 pub mod message_repo;
 pub mod models;
-pub mod retry;
-mod http_client;
-mod output_tracker;
-mod listener;
 mod ntfy;
+mod output_tracker;
+pub mod retry;
 mod subscription;
 
-pub use subscription::SubscriptionHandle;
 pub use listener::*;
-pub use ntfy::NtfyHandle;
 pub use ntfy::start;
+pub use ntfy::NtfyHandle;
 use std::sync::Arc;
+pub use subscription::SubscriptionHandle;
 
 use http_client::HttpClient;
 
@@ -43,4 +43,3 @@ pub enum Error {
     #[error("subscription not found while {0}")]
     SubscriptionNotFound(String),
 }
-

@@ -28,7 +28,8 @@ impl Db {
     }
     fn migrate(&mut self) -> Result<()> {
         self.conn
-        .read().unwrap()
+            .read()
+            .unwrap()
             .execute_batch(include_str!("./migrations/00.sql"))?;
         Ok(())
     }

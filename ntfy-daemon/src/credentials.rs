@@ -9,7 +9,7 @@ use async_trait::async_trait;
 pub struct KeyringItem {
     attributes: HashMap<String, String>,
     // we could zero-out this region of memory
-    secret: Vec<u8> 
+    secret: Vec<u8>,
 }
 
 impl KeyringItem {
@@ -121,7 +121,10 @@ impl NullableKeyring {
                 ("username".to_string(), cred.username.clone()),
                 ("server".to_string(), cred.password.clone()),
             ]);
-            search_response.push(KeyringItem { attributes, secret: cred.password.into_bytes() });
+            search_response.push(KeyringItem {
+                attributes,
+                secret: cred.password.into_bytes(),
+            });
         }
 
         Self { search_response }
@@ -163,17 +166,12 @@ impl Credentials {
     }
     pub async fn load(&mut self) -> anyhow::Result<()> {
         let attrs = HashMap::from([("type", "password")]);
-        let values = self
-            .keyring
-            .search_items(attrs)
-            .await?;
+        let values = self.keyring.search_items(attrs).await?;
 
         let mut lock = self.creds.write().unwrap();
         lock.clear();
         for item in values {
-            let attrs = item
-                .attributes()
-                .await;
+            let attrs = item.attributes().await;
             lock.insert(
                 attrs["server"].to_string(),
                 Credential {
@@ -230,9 +228,7 @@ impl Credentials {
             ("username", &creds.username),
             ("server", server),
         ]);
-        self.keyring
-            .delete(attrs)
-            .await?;
+        self.keyring.delete(attrs).await?;
         self.creds
             .write()
             .unwrap()

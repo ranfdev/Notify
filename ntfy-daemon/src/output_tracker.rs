@@ -9,7 +9,9 @@ pub struct OutputTracker<T> {
 
 impl<T> Default for OutputTracker<T> {
     fn default() -> Self {
-        Self { store: Default::default() }
+        Self {
+            store: Default::default(),
+        }
     }
 }
 
@@ -41,7 +43,9 @@ pub struct OutputTrackerAsync<T> {
 
 impl<T> Default for OutputTrackerAsync<T> {
     fn default() -> Self {
-        Self { store: Default::default() }
+        Self {
+            store: Default::default(),
+        }
     }
 }
 

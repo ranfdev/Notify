@@ -2,11 +2,11 @@ use anyhow::Result;
 use async_trait::async_trait;
 use reqwest::{header::HeaderMap, Client, Request, RequestBuilder, Response, ResponseBuilderExt};
 use serde_json::{json, Value};
-use tokio::time;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
+use tokio::time;
 
 use crate::models;
 use crate::output_tracker::OutputTrackerAsync;
@@ -86,7 +86,6 @@ impl HttpClient {
     }
 }
 
-
 #[derive(Clone, Default)]
 pub struct NullableClient {
     responses: Arc<RwLock<HashMap<String, VecDeque<Response>>>>,
@@ -161,7 +160,12 @@ impl NullableClientBuilder {
 
     pub fn build(self) -> NullableClient {
         NullableClient {
-            responses: Arc::new(RwLock::new(self.responses.into_iter().map(|(k, v)| (k, v.into())).collect())),
+            responses: Arc::new(RwLock::new(
+                self.responses
+                    .into_iter()
+                    .map(|(k, v)| (k, v.into()))
+                    .collect(),
+            )),
             default_response: Arc::new(RwLock::new(self.default_response)),
         }
     }
@@ -183,7 +187,7 @@ impl LightHttpClient for NullableClient {
         time::sleep(Duration::from_millis(1)).await;
         let url = request.url().to_string();
         let mut responses = self.responses.write().await;
-        
+
         if let Some(url_responses) = responses.get_mut(&url) {
             if let Some(response) = url_responses.pop_front() {
                 // Remove the URL entry if no more responses
@@ -282,17 +286,23 @@ mod tests {
         let http_client = HttpClient::new_nullable(client);
 
         // First request gets first response
-        let request = http_client.get("https://api.example.com/sequence").build()?;
+        let request = http_client
+            .get("https://api.example.com/sequence")
+            .build()?;
         let response = http_client.execute(request).await?;
         assert_eq!(response.text().await?, "first");
 
         // Second request gets second response
-        let request = http_client.get("https://api.example.com/sequence").build()?;
+        let request = http_client
+            .get("https://api.example.com/sequence")
+            .build()?;
         let response = http_client.execute(request).await?;
         assert_eq!(response.text().await?, "second");
 
         // Third request fails (no more responses)
-        let request = http_client.get("https://api.example.com/sequence").build()?;
+        let request = http_client
+            .get("https://api.example.com/sequence")
+            .build()?;
         let result = http_client.execute(request).await;
         assert!(result.is_err());
 

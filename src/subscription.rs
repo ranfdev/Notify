@@ -214,12 +214,17 @@ impl Subscription {
 
     async fn send_updated_info(&self) -> anyhow::Result<()> {
         let imp = self.imp();
-        imp.client.get().unwrap().update_info(
-            models::Subscription::builder(self.topic())
-                .display_name((imp.display_name.borrow().to_string()))
-                .muted(imp.muted.get())
-                .build().map_err(|e| anyhow::anyhow!("invalid subscription data"))?
-        ).await?;
+        imp.client
+            .get()
+            .unwrap()
+            .update_info(
+                models::Subscription::builder(self.topic())
+                    .display_name((imp.display_name.borrow().to_string()))
+                    .muted(imp.muted.get())
+                    .build()
+                    .map_err(|e| anyhow::anyhow!("invalid subscription data"))?,
+            )
+            .await?;
         Ok(())
     }
     fn last_message(list: &gio::ListStore) -> Option<models::Message> {
@@ -259,7 +264,12 @@ impl Subscription {
         };
 
         let this = self.clone();
-        this.imp().client.get().unwrap().update_read_until(value).await?;
+        this.imp()
+            .client
+            .get()
+            .unwrap()
+            .update_read_until(value)
+            .await?;
         this.imp().read_until.set(value);
         this.update_unread_count();
 

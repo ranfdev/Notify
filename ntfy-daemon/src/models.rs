@@ -323,7 +323,7 @@ impl From<Status> for u8 {
 #[derive(Clone, Debug)]
 pub struct Account {
     pub server: String,
-    pub username: String
+    pub username: String,
 }
 
 pub struct Notification {
@@ -340,14 +340,11 @@ pub trait NetworkMonitorProxy: Sync + Send {
     fn listen(&self) -> Pin<Box<dyn Stream<Item = ()>>>;
 }
 
-
-pub struct NullNotifier {
-
-}
+pub struct NullNotifier {}
 
 impl NullNotifier {
     pub fn new() -> Self {
-        Self  {}
+        Self {}
     }
 }
 impl NotificationProxy for NullNotifier {
@@ -356,9 +353,7 @@ impl NotificationProxy for NullNotifier {
     }
 }
 
-pub struct NullNetworkMonitor {
-   
-}
+pub struct NullNetworkMonitor {}
 
 impl NullNetworkMonitor {
     pub fn new() -> Self {

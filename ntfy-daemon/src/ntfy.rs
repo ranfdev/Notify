@@ -16,10 +16,8 @@ use crate::{
     ListenerActor, ListenerCommand, ListenerConfig, ListenerHandle, SharedEnv, SubscriptionHandle,
 };
 
-
 const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
 const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(240); // 4 minutes
-
 
 pub fn build_client() -> anyhow::Result<reqwest::Client> {
     Ok(reqwest::Client::builder()
@@ -208,7 +206,11 @@ impl NtfyActor {
                     password,
                     respond_to,
                 } => {
-                    let result = self.env.credentials.insert(&server, &username, &password).await;
+                    let result = self
+                        .env
+                        .credentials
+                        .insert(&server, &username, &password)
+                        .await;
                     let _ = respond_to.send(result);
                 }
 
@@ -341,7 +343,12 @@ impl NtfyHandle {
         rx.await.map_err(|_| anyhow!("Actor response error"))?
     }
 
-    pub async fn add_account(&self, server: &str, username: &str, password: &str) -> anyhow::Result<()> {
+    pub async fn add_account(
+        &self,
+        server: &str,
+        username: &str,
+        password: &str,
+    ) -> anyhow::Result<()> {
         let (tx, rx) = oneshot::channel();
         self.command_tx
             .send(NtfyMessage::AddAccount {
