@@ -14,6 +14,7 @@ use gio::UnixSocketAddress;
 use gtk::{gdk, gio, glib};
 use ntfy_daemon::models;
 use ntfy_daemon::ntfy_capnp::system_notifier;
+use ntfy_daemon::NtfyHandle;
 use tracing::{debug, error, info, warn};
 
 use crate::config::{APP_ID, PKGDATADIR, PROFILE, VERSION};
@@ -23,7 +24,6 @@ mod imp {
     use std::cell::RefCell;
 
     use glib::WeakRef;
-    use ntfy_daemon::Ntfy;
     use once_cell::sync::OnceCell;
 
     use super::*;
@@ -33,7 +33,7 @@ mod imp {
         pub window: RefCell<WeakRef<NotifyWindow>>,
         pub socket_path: RefCell<PathBuf>,
         pub hold_guard: OnceCell<gio::ApplicationHoldGuard>,
-        pub ntfy: OnceCell<Ntfy>,
+        pub ntfy: OnceCell<NtfyHandle>,
     }
 
     #[glib::object_subclass]
@@ -319,7 +319,7 @@ impl NotifyApplication {
             }
         }
         let proxies = std::sync::Arc::new(Proxies { notification: s });
-        let ntfy = ntfy_daemon::Ntfy::start(
+        let ntfy = ntfy_daemon::start(
             socket_path.to_owned(),
             dbpath.to_str().unwrap(),
             proxies.clone(),

@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::sync::{Arc, RwLock};
 
 use async_trait::async_trait;
 
@@ -135,14 +136,14 @@ pub struct Credential {
 
 #[derive(Clone)]
 pub struct Credentials {
-    keyring: Rc<dyn LightKeyring>,
-    creds: Rc<RefCell<HashMap<String, Credential>>>,
+    keyring: Arc<dyn LightKeyring + Send + Sync>,
+    creds: Arc<RwLock<HashMap<String, Credential>>>,
 }
 
 impl Credentials {
     pub async fn new() -> anyhow::Result<Self> {
         let mut this = Self {
-            keyring: Rc::new(RealKeyring {
+            keyring: Arc::new(RealKeyring {
                 keyring: oo7::Keyring::new()
                     .await
                     .expect("Failed to start Secret Service"),
@@ -154,7 +155,7 @@ impl Credentials {
     }
     pub async fn new_nullable(credentials: Vec<Credential>) -> anyhow::Result<Self> {
         let mut this = Self {
-            keyring: Rc::new(NullableKeyring::with_credentials(credentials)),
+            keyring: Arc::new(NullableKeyring::with_credentials(credentials)),
             creds: Default::default(),
         };
         this.load().await?;
@@ -168,12 +169,13 @@ impl Credentials {
             .await
             .map_err(|e| capnp::Error::failed(e.to_string()))?;
 
-        self.creds.borrow_mut().clear();
+        let mut lock = self.creds.write().unwrap();
+        lock.clear();
         for item in values {
             let attrs = item
                 .attributes()
                 .await;
-            self.creds.borrow_mut().insert(
+            lock.insert(
                 attrs["server"].to_string(),
                 Credential {
                     username: attrs["username"].to_string(),
@@ -184,14 +186,14 @@ impl Credentials {
         Ok(())
     }
     pub fn get(&self, server: &str) -> Option<Credential> {
-        self.creds.borrow().get(server).cloned()
+        self.creds.read().unwrap().get(server).cloned()
     }
     pub fn list_all(&self) -> HashMap<String, Credential> {
-        self.creds.borrow().clone()
+        self.creds.read().unwrap().clone()
     }
     pub async fn insert(&self, server: &str, username: &str, password: &str) -> anyhow::Result<()> {
         {
-            if let Some(cred) = self.creds.borrow().get(server) {
+            if let Some(cred) = self.creds.read().unwrap().get(server) {
                 if cred.username != username {
                     anyhow::bail!("You can add only one account per server");
                 }
@@ -207,7 +209,7 @@ impl Credentials {
             .await
             .map_err(|e| capnp::Error::failed(e.to_string()))?;
 
-        self.creds.borrow_mut().insert(
+        self.creds.write().unwrap().insert(
             server.to_string(),
             Credential {
                 username: username.to_string(),
@@ -219,7 +221,8 @@ impl Credentials {
     pub async fn delete(&self, server: &str) -> anyhow::Result<()> {
         let creds = {
             self.creds
-                .borrow()
+                .read()
+                .unwrap()
                 .get(server)
                 .ok_or(anyhow::anyhow!("server creds not found"))?
                 .clone()
@@ -234,7 +237,8 @@ impl Credentials {
             .await
             .map_err(|e| capnp::Error::failed(e.to_string()))?;
         self.creds
-            .borrow_mut()
+            .write()
+            .unwrap()
             .remove(server)
             .ok_or(anyhow::anyhow!("server creds not found"))?;
         Ok(())

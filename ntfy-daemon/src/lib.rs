@@ -8,8 +8,12 @@ mod http_client;
 mod output_tracker;
 mod listener;
 mod ntfy;
+mod subscription;
 
-pub use ntfy::Ntfy;
+pub use subscription::SubscriptionHandle;
+pub use listener::*;
+pub use ntfy::NtfyHandle;
+pub use ntfy::start;
 
 pub mod ntfy_capnp {
     include!(concat!(env!("OUT_DIR"), "/src/ntfy_capnp.rs"));

@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use reqwest::{header::HeaderMap, Client, Request, RequestBuilder, Response, ResponseBuilderExt};
 use serde_json::{json, Value};
 use tokio::time;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
@@ -86,26 +86,90 @@ impl HttpClient {
     }
 }
 
+
 #[derive(Clone, Default)]
 pub struct NullableClient {
-    responses: Arc<RwLock<HashMap<String, Response>>>,
+    responses: Arc<RwLock<HashMap<String, VecDeque<Response>>>>,
     default_response: Arc<RwLock<Option<Box<dyn Fn() -> Response + Send + Sync + 'static>>>>,
 }
 
-impl NullableClient {
+/// Builder for configuring NullableClient
+#[derive(Default)]
+pub struct NullableClientBuilder {
+    responses: HashMap<String, VecDeque<Response>>,
+    default_response: Option<Box<dyn Fn() -> Response + Send + Sync + 'static>>,
+}
+
+impl NullableClientBuilder {
     pub fn new() -> Self {
         Self::default()
     }
 
-    pub async fn set_response(&self, url: &str, response: Response) {
+    /// Add a single response for a specific URL
+    pub fn response(mut self, url: impl Into<String>, response: Response) -> Self {
         self.responses
-            .write()
-            .await
-            .insert(url.to_string(), response);
+            .entry(url.into())
+            .or_default()
+            .push_back(response);
+        self
     }
 
-    pub async fn set_default_response(&self, res: Box<dyn Fn() -> Response + Send + Sync + 'static>) {
-        *self.default_response.write().await = Some(res);
+    /// Add multiple responses for a specific URL that will be returned in sequence
+    pub fn responses(mut self, url: impl Into<String>, responses: Vec<Response>) -> Self {
+        self.responses.insert(url.into(), responses.into());
+        self
+    }
+
+    /// Set a default response generator for any unmatched URLs
+    pub fn default_response(
+        mut self,
+        response: impl Fn() -> Response + Send + Sync + 'static,
+    ) -> Self {
+        self.default_response = Some(Box::new(response));
+        self
+    }
+
+    /// Helper method to quickly add a JSON response
+    pub fn json_response(
+        self,
+        url: impl Into<String>,
+        status: u16,
+        body: impl serde::Serialize,
+    ) -> Result<Self> {
+        let response = http::response::Builder::new()
+            .status(status)
+            .body(serde_json::to_string(&body)?)
+            .unwrap()
+            .into();
+        Ok(self.response(url, response))
+    }
+
+    /// Helper method to quickly add a text response
+    pub fn text_response(
+        self,
+        url: impl Into<String>,
+        status: u16,
+        body: impl Into<String>,
+    ) -> Self {
+        let response = http::response::Builder::new()
+            .status(status)
+            .body(body.into())
+            .unwrap()
+            .into();
+        self.response(url, response)
+    }
+
+    pub fn build(self) -> NullableClient {
+        NullableClient {
+            responses: Arc::new(RwLock::new(self.responses.into_iter().map(|(k, v)| (k, v.into())).collect())),
+            default_response: Arc::new(RwLock::new(self.default_response)),
+        }
+    }
+}
+
+impl NullableClient {
+    pub fn builder() -> NullableClientBuilder {
+        NullableClientBuilder::new()
     }
 }
 
@@ -116,15 +180,28 @@ impl LightHttpClient for NullableClient {
     }
 
     async fn execute(&self, request: Request) -> Result<Response> {
-        time::sleep(Duration::from_millis(1)).await; // else we spam the thread with responses
-        // Get the configured response or return a default one
+        time::sleep(Duration::from_millis(1)).await;
         let url = request.url().to_string();
-        if let Some(response) = self.responses.write().await.remove(&url) {
-            Ok(response)
-        } else if let Some(res) = &*self.default_response.read().await {
-            Ok(res())
+        let mut responses = self.responses.write().await;
+        
+        if let Some(url_responses) = responses.get_mut(&url) {
+            if let Some(response) = url_responses.pop_front() {
+                // Remove the URL entry if no more responses
+                if url_responses.is_empty() {
+                    responses.remove(&url);
+                }
+                Ok(response)
+            } else {
+                if let Some(default_fn) = &*self.default_response.read().await {
+                    Ok(default_fn())
+                } else {
+                    Err(anyhow::anyhow!("no response configured for URL: {}", url))
+                }
+            }
+        } else if let Some(default_fn) = &*self.default_response.read().await {
+            Ok(default_fn())
         } else {
-            Err(anyhow::anyhow!("no response"))
+            Err(anyhow::anyhow!("no response configured for URL: {}", url))
         }
     }
 }
@@ -132,79 +209,92 @@ impl LightHttpClient for NullableClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[tokio::test]
-    async fn test_nullable() -> Result<()> {
-        let client = NullableClient::new();
+    async fn test_nullable_with_builder() -> Result<()> {
+        // Configure client using builder pattern
+        let client = NullableClient::builder()
+            .text_response("https://api.example.com/topic", 200, "ok")
+            .json_response(
+                "https://api.example.com/json",
+                200,
+                json!({ "status": "success" }),
+            )?
+            .default_response(|| {
+                http::response::Builder::new()
+                    .status(404)
+                    .body("not found")
+                    .unwrap()
+                    .into()
+            })
+            .build();
 
-        // Configure mock response
-        let mock_response = http::response::Builder::new()
-            .status(200)
-            .body("ok")
-            .unwrap()
-            .into();
-        client
-            .set_response("https://api.example.com/topic", mock_response)
-            .await;
+        let http_client = HttpClient::new_nullable(client);
+        let request_tracker = http_client.request_tracker().await;
 
-        let client = HttpClient::new_nullable(client);
-        let request_tracker = client.request_tracker().await;
-
-        let req = client
-            .get("https://api.example.com/topic")
-            .header("Content-Type", "application/x-ndjson")
-            .header("Transfer-Encoding", "chunked")
-            .build()
-            .unwrap();
-
-        // Execute request
-        let response = client.execute(req).await?;
-
+        // Test successful text response
+        let request = http_client.get("https://api.example.com/topic").build()?;
+        let response = http_client.execute(request).await?;
         assert_eq!(response.status(), 200);
-        assert_eq!(response.bytes().await.unwrap(), b"ok"[..]);
+        assert_eq!(response.text().await?, "ok");
+
+        // Test successful JSON response
+        let request = http_client.get("https://api.example.com/json").build()?;
+        let response = http_client.execute(request).await?;
+        assert_eq!(response.status(), 200);
+        assert_eq!(response.text().await?, r#"{"status":"success"}"#);
+
+        // Test default response
+        let request = http_client.get("https://api.example.com/unknown").build()?;
+        let response = http_client.execute(request).await?;
+        assert_eq!(response.status(), 404);
+        assert_eq!(response.text().await?, "not found");
 
         // Verify recorded requests
         let requests = request_tracker.items().await;
-        assert_eq!(requests.len(), 1);
-
-        let request = &requests[0];
-        assert_eq!(request.method, "GET");
-        assert_eq!(
-            request.headers.get("Content-Type").unwrap(),
-            "application/x-ndjson"
-        );
-        assert_eq!(request.headers.get("Transfer-Encoding").unwrap(), "chunked");
+        assert_eq!(requests.len(), 3);
 
         Ok(())
     }
 
     #[tokio::test]
-    async fn test_nullable_with_failing_response() -> Result<()> {
-        let client = NullableClient::new();
+    async fn test_sequence_of_responses() -> Result<()> {
+        // Configure client with multiple responses for the same URL
+        let client = NullableClient::builder()
+            .responses(
+                "https://api.example.com/sequence",
+                vec![
+                    http::response::Builder::new()
+                        .status(200)
+                        .body("first")
+                        .unwrap()
+                        .into(),
+                    http::response::Builder::new()
+                        .status(200)
+                        .body("second")
+                        .unwrap()
+                        .into(),
+                ],
+            )
+            .build();
 
-        // Configure mock response
-        let mock_response = http::response::Builder::new()
-            .status(400)
-            .body("fail")
-            .unwrap()
-            .into();
-        client
-            .set_response("https://api.example.com/topic", mock_response)
-            .await;
+        let http_client = HttpClient::new_nullable(client);
 
-        let req = client
-            .get("https://api.example.com/topic")
-            .header("Content-Type", "application/x-ndjson")
-            .header("Transfer-Encoding", "chunked")
-            .build()
-            .unwrap();
+        // First request gets first response
+        let request = http_client.get("https://api.example.com/sequence").build()?;
+        let response = http_client.execute(request).await?;
+        assert_eq!(response.text().await?, "first");
 
-        // Execute request
-        let response = client.execute(req).await?;
-        let response: Result<_, _> = response.error_for_status();
+        // Second request gets second response
+        let request = http_client.get("https://api.example.com/sequence").build()?;
+        let response = http_client.execute(request).await?;
+        assert_eq!(response.text().await?, "second");
 
-        dbg!(&response);
-        assert!(matches!(response, Err(_)));
+        // Third request fails (no more responses)
+        let request = http_client.get("https://api.example.com/sequence").build()?;
+        let result = http_client.execute(request).await;
+        assert!(result.is_err());
 
         Ok(())
     }

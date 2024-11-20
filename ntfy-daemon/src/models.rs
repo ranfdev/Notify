@@ -28,7 +28,9 @@ pub fn validate_topic(topic: &str) -> Result<&str, Error> {
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct Message {
+    pub id: String,
     pub topic: String,
+    pub expires: Option<u64>,
     pub message: Option<String>,
     #[serde(default = "Default::default")]
     pub time: u64,
@@ -336,4 +338,36 @@ pub trait NotificationProxy: Sync + Send {
 
 pub trait NetworkMonitorProxy: Sync + Send {
     fn listen(&self) -> Pin<Box<dyn Stream<Item = ()>>>;
+}
+
+
+pub struct NullNotifier {
+
+}
+
+impl NullNotifier {
+    pub fn new() -> Self {
+        Self  {}
+    }
+}
+impl NotificationProxy for NullNotifier {
+    fn send(&self, n: Notification) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
+pub struct NullNetworkMonitor {
+   
+}
+
+impl NullNetworkMonitor {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+impl NetworkMonitorProxy for NullNetworkMonitor {
+    fn listen(&self) -> Pin<Box<dyn Stream<Item = ()>>> {
+        todo!()
+    }
 }

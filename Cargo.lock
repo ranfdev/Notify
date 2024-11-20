@@ -1955,6 +1955,7 @@ name = "ntfy-daemon"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-channel",
  "async-trait",
  "capnp 0.18.13",
  "capnp-rpc",

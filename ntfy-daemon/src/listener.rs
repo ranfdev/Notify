@@ -1,15 +1,17 @@
 use std::cell::RefCell;
 use std::sync::Arc;
 use std::thread::JoinHandle;
-use std::{rc::Rc, time::Duration};
+use std::{time::Duration};
 
 use futures::{StreamExt, TryStreamExt};
 use serde::{Deserialize, Serialize};
 use tokio::io::AsyncBufReadExt;
+use tokio::spawn;
+use tokio::sync::RwLock;
 use tokio::task::{self, spawn_local, AbortHandle, LocalSet};
 use tokio::{
     select,
-    sync::{broadcast, mpsc, watch},
+    sync::{mpsc, watch, oneshot},
 };
 use tokio_stream::wrappers::LinesStream;
 use tracing::{debug, error, info};
@@ -23,7 +25,7 @@ use tokio::time::timeout;
 const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
 const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(240); // 4 minutes
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "event")]
 pub enum ServerEvent {
     #[serde(rename = "open")]
@@ -34,12 +36,9 @@ pub enum ServerEvent {
         topic: String,
     },
     #[serde(rename = "message")]
-    Message {
-        id: String,
-        expires: Option<usize>,
-        #[serde(flatten)]
-        message: models::Message,
-    },
+    Message (
+        models::Message,
+    ),
     #[serde(rename = "keepalive")]
     KeepAlive {
         id: String,
@@ -64,10 +63,11 @@ pub struct ListenerConfig {
     pub(crate) since: u64,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum ListenerCommand {
     Restart,
     Shutdown,
+    GetState(oneshot::Sender<ConnectionState>),
 }
 
 fn topic_request(
@@ -108,63 +108,82 @@ pub enum ConnectionState {
     },
 }
 
-pub struct ConnectionHandler {
-    pub event_tx: watch::Sender<ListenerEvent>,
-    pub commands_rx: Option<broadcast::Receiver<ListenerCommand>>,
+pub struct ListenerActor {
+    pub event_tx: async_channel::Sender<ListenerEvent>,
+    pub commands_rx: Option<mpsc::Receiver<ListenerCommand>>,
     pub config: ListenerConfig,
-    pub state: Rc<RefCell<ConnectionState>>,
+    pub state: ConnectionState,
 }
 
-impl ConnectionHandler {
-    fn new(
+impl ListenerActor {
+    pub fn new(
         config: ListenerConfig,
-        event_tx: watch::Sender<ListenerEvent>,
-        commands_rx: broadcast::Receiver<ListenerCommand>,
-    ) -> Self {
-        let this = Self {
-            event_tx,
-            commands_rx: Some(commands_rx),
+    ) -> ListenerHandle {
+        let (event_tx, event_rx) = async_channel::bounded(64);
+        let (commands_tx, commands_rx) = mpsc::channel(1);
+
+        let config_clone = config.clone();
+
+        // use a new local set to isolate panics
+        let local_set = LocalSet::new();
+        local_set.spawn_local(async move {
+
+            let this = Self {
+                event_tx,
+                commands_rx: Some(commands_rx),
+                config: config_clone,
+                state: ConnectionState::Unitialized,
+            };
+
+            this.run_loop().await;
+        });
+        spawn_local(local_set);
+
+        ListenerHandle {
+            events: event_rx,
             config,
-            state: Rc::new(RefCell::new(ConnectionState::Unitialized)),
-        };
-        this
+            commands: commands_tx,
+            listener_actor: Arc::new(RwLock::new(None)),
+            join_handle: Arc::new(None),
+        }
     }
 
-    pub fn run(mut self) -> task::JoinHandle<()> {
-        spawn_local(async move {
+    pub async fn run_loop(mut self) {
             let mut commands_rx = self.commands_rx.take().unwrap();
             loop {
                 select! {
-                        _ = self.run_supervised_loop() => {
-                            // the supervised loop cannot fail. If it finished, don't restart.
-                            break;
-                        },
-                        cmd = commands_rx.recv() => {
-                            match cmd {
-                                Ok(ListenerCommand::Restart) => {
-                                    info!("Received restart command");
-                                    continue;
-                                }
-                                Ok(ListenerCommand::Shutdown) => {
-                                    info!("Received shutdown command");
-                                    break;
-                                }
-                                Err(e) => {
-                                    error!("Command receive error: {:?}", e);
-                                    break;
-                                }
+                    _ = self.run_supervised_loop() => {
+                        // the supervised loop cannot fail. If it finished, don't restart.
+                        break;
+                    },
+                    cmd = commands_rx.recv() => {
+                        match cmd {
+                            Some(ListenerCommand::Restart) => {
+                                info!("Received restart command");
+                                continue;
+                            }
+                            Some(ListenerCommand::Shutdown) => {
+                                info!("Received shutdown command");
+                                break;
+                            }
+                            Some(ListenerCommand::GetState(tx)) => {
+                                info!("Received get state command");
+                                let state = self.state.clone();
+                                let _ = tx.send(state);
+                            }
+                            None => {
+                                error!("Channel closed for ListenerActor");
+                                break;
                             }
                         }
-
+                    }
                 }
             }
-        })
     }
 
-    fn set_state(&mut self, state: ConnectionState) {
-        self.state.replace(state.clone());
-        self.event_tx
-            .send(ListenerEvent::ConnectionStateChanged(state)).unwrap();
+    async fn set_state(&mut self, state: ConnectionState) {
+        self.state = state.clone();
+        self.event_tx.send(ListenerEvent::ConnectionStateChanged(state)).await.unwrap();
     }
     async fn run_supervised_loop(&mut self) {
         dbg!("supervised");
@@ -189,7 +208,7 @@ impl ConnectionHandler {
                     retry_count: retry.count(),
                     delay: retry.next_delay(),
                     error: Some(Arc::new(e)),
-                });
+                }).await;
                 info!(delay = ?retry.next_delay(), "restarting");
                 retry.wait().await;
             } else {
@@ -219,12 +238,11 @@ impl ConnectionHandler {
 
         self.set_state(
                 ConnectionState::Connected,
-            );
+            ).await;
 
         info!(topic = %&self.config.topic, "listening");
         while let Some(msg) = stream.next().await {
             let msg = msg?;
-            dbg!(&msg);
 
             let min_msg = serde_json::from_str::<models::MinMessage>(&msg)
                 .map_err(|e| Error::InvalidMinMessage(msg.to_string(), e))?;
@@ -234,9 +252,9 @@ impl ConnectionHandler {
                 .map_err(|e| Error::InvalidMessage(msg.to_string(), e))?;
 
             match event {
-                ServerEvent::Message { message, .. } => {
+                ServerEvent::Message(msg) => {
                     debug!("message event");
-                    self.event_tx.send(ListenerEvent::Message(message))?;
+                    self.event_tx.send(ListenerEvent::Message(msg)).await.unwrap();
                 }
                 ServerEvent::KeepAlive { .. } => {
                     debug!("keepalive event");
@@ -253,61 +271,27 @@ impl ConnectionHandler {
 
 // Reliable listener implementation
 #[derive(Clone)]
-pub struct Listener {
-    pub state: Rc<RefCell<ConnectionState>>,
-    pub events: watch::Receiver<ListenerEvent>,
+pub struct ListenerHandle {
+    pub events: async_channel::Receiver<ListenerEvent>,
     pub config: ListenerConfig,
-    pub commands: broadcast::Sender<ListenerCommand>,
-    pub event_tracker: OutputTracker<ListenerEvent>,
-    local_set: Rc<LocalSet>,
-    connection_handler: Rc<RefCell<Option<ConnectionHandler>>>,
+    pub commands: mpsc::Sender<ListenerCommand>,
+    join_handle: Arc<Option<task::JoinHandle<()>>>,
+    listener_actor: Arc<RwLock<Option<ListenerActor>>>,
 }
 
-impl Listener {
-    pub fn new(config: ListenerConfig) -> Self {
-        let (tx, rx) = watch::channel(ListenerEvent::ConnectionStateChanged(
-            ConnectionState::Unitialized,
-        ));
-        let (commands_tx, commands_rx) = broadcast::channel(1);
-
-        let local_set = Rc::new(LocalSet::new());
-        let connection_handler = ConnectionHandler::new(config.clone(), tx, commands_rx);
-        let state = connection_handler.state.clone();
-
-        let event_tracker = OutputTracker::default();
-        // let event_tracker_clone = event_tracker.clone();
-        // let mut rx_clone = rx.clone();
-        // local_set.spawn_local(async move {
-        //     rx_clone.changed().await.unwrap();
-        //     event_tracker_clone.push(rx_clone.borrow().clone());
-        // });
-
-        Listener {
-            state,
-            events: rx,
-            config,
-            commands: commands_tx,
-            local_set,
-            event_tracker,
-            connection_handler: Rc::new(RefCell::new(Some(connection_handler))),
-        }
-    }
-    pub async fn run(&mut self) {
-        let connection_handler = self.connection_handler.take().unwrap();
-
-        let _ = self
-            .local_set
-            .run_until(async move {
-                connection_handler.run().await.unwrap();
-            })
-            .await;
+impl ListenerHandle {
+    // the response will be sent as an event in self.events
+    pub async fn request_state(&self) -> ConnectionState {
+        let (tx, rx) = oneshot::channel();
+        self.commands.send(ListenerCommand::GetState(tx)).await.unwrap();
+        rx.await.unwrap()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use models::Subscription;
-    use reqwest::ResponseBuilderExt;
+    use serde_json::json;
     use task::LocalSet;
     use tokio_stream::wrappers::WatchStream;
 
@@ -328,34 +312,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_listener_reconnects_on_http_status_400() {
+    async fn test_listener_reconnects_on_http_status_500() {
         let local_set = LocalSet::new();
         local_set
-            .run_until(async {
+            .spawn_local(async {
                 let http_client = HttpClient::new_nullable({
-                    let nullable = NullableClient::new();
                     let url = Subscription::build_url("http://localhost", "test", 0).unwrap();
-                    nullable
-                        .set_response(
-                            url.as_str(),
-                            reqwest::Response::from(
-                                http::response::Builder::new()
-                                    .status(500)
-                                    .url(url.clone())
-                                    .body("failed")
-                                    .unwrap(),
-                            ),
-                        )
-                        .await;
-                    nullable.set_default_response(Box::new(move || {
-                        reqwest::Response::from(
-                            http::response::Builder::new()
-                                .status(200)
-                                .url(url.clone())
-                                .body(r#"{"id":"SLiKI64DOt","time":1635528757,"event":"open","topic":"mytopic"}"#)
-                                .unwrap(),
-                        )})
-                    ).await;
+                    let nullable = NullableClient::builder()
+                        .text_response(url.clone(), 500, "failed")
+                        .json_response(url, 200, json!({"id":"SLiKI64DOt","time":1635528757,"event":"open","topic":"mytopic"})).unwrap()
+                        .build();
                     nullable
                 });
                 let credentials = Credentials::new_nullable(vec![]).await.unwrap();
@@ -368,11 +334,8 @@ mod tests {
                     since: 0,
                 };
 
-                let mut listener = Listener::new(config.clone());
-                let events = listener.events.clone();
-                let changes = WatchStream::new(events);
-                spawn_local(async move { listener.run().await });
-                let items: Vec<_> = changes.take(3).collect().await;
+                let mut listener = ListenerActor::new(config.clone());
+                let items: Vec<_> = listener.events.take(3).collect().await;
                 
 
                 dbg!(&items);
@@ -391,40 +354,21 @@ mod tests {
                 //     ListenerEvent::Disconnected { .. },
                 //     ListenerEvent::Connected { .. },
                 // ));
-            })
-            .await;
+            });
+            local_set.await;
     }
 
     #[tokio::test]
     async fn test_listener_reconnects_on_invalid_message() {
         let local_set = LocalSet::new();
         local_set
-            .run_until(async {
+            .spawn_local(async {
                 let http_client = HttpClient::new_nullable({
-                    let nullable = NullableClient::new();
                     let url = Subscription::build_url("http://localhost", "test", 0).unwrap();
-                    nullable
-                        .set_response(
-                            url.as_str(),
-                            reqwest::Response::from(
-                                http::response::Builder::new()
-                                    .status(200)
-                                    .url(url.clone())
-                                    .body("failed")
-                                    .unwrap(),
-                            ),
-                        )
-                        .await;
-                    nullable.set_default_response(Box::new(move || {
-                        reqwest::Response::from(
-                            http::response::Builder::new()
-                                .status(200)
-                                .url(url.clone())
-                                .body(r#"{"id":"SLiKI64DOt","time":1635528757,"event":"open","topic":"mytopic"}"#)
-                                .unwrap(),
-                        )
-                    })).await;
-                    
+                    let nullable = NullableClient::builder()
+                        .text_response(url.clone(), 200, "invalid message")
+                        .json_response(url, 200, json!({"id":"SLiKI64DOt","time":1635528757,"event":"open","topic":"mytopic"})).unwrap()
+                        .build();
                     nullable
                 });
                 let credentials = Credentials::new_nullable(vec![]).await.unwrap();
@@ -437,11 +381,8 @@ mod tests {
                     since: 0,
                 };
 
-                let mut listener = Listener::new(config.clone());
-                let events = listener.events.clone();
-                let changes = WatchStream::new(events);
-                spawn_local(async move { listener.run().await });
-                let items: Vec<_> = changes.take(3).collect().await;
+                let mut listener = ListenerActor::new(config.clone());
+                let items: Vec<_> = listener.events.take(3).collect().await;
 
                 dbg!(&items);
                 assert!(matches!(
@@ -452,15 +393,15 @@ mod tests {
                         ListenerEvent::ConnectionStateChanged(ConnectionState::Connected { .. }),
                     ]
                 ));
-            })
-            .await;
+            });
+        local_set.await;
     }
 
     #[tokio::test]
     async fn integration_connects_sends_receives_simple() {
         let local_set = LocalSet::new();
         local_set
-            .run_until(async {
+            .spawn_local(async {
                 let http_client = HttpClient::new(reqwest::Client::new());
                 let credentials = Credentials::new_nullable(vec![]).await.unwrap();
 
@@ -472,10 +413,10 @@ mod tests {
                     since: 0,
                 };
 
-                let mut listener = Listener::new(config.clone());
+                let mut listener = ListenerActor::new(config.clone());
 
                 // assert_event_matches!(listener, ListenerEvent::Connected { .. },);
-            })
-            .await;
+            });
+            local_set.await;
     }
 }

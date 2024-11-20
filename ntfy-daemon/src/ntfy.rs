@@ -1,21 +1,49 @@
+use crate::models::NullNetworkMonitor;
+use crate::models::NullNotifier;
 use anyhow::{anyhow, Context};
 use futures::future::join_all;
 use std::{collections::HashMap, future::Future, sync::Arc};
 use tokio::{
-    sync::{broadcast, mpsc, RwLock},
-    task::LocalSet,
+    sync::{broadcast, mpsc, oneshot, RwLock},
+    task::{spawn_local, LocalSet},
 };
 use tracing::{error, info};
 
 use crate::{
-    credentials::{self, Credential},
     http_client::HttpClient,
-    listener::{Listener, ListenerCommand, ListenerConfig, ListenerEvent},
     message_repo::Db,
     models::{self, Account},
     topic_listener::build_client,
-    SharedEnv,
+    ListenerActor, ListenerCommand, ListenerConfig, ListenerHandle, SharedEnv, SubscriptionHandle,
 };
+
+// Message types for the actor
+#[derive()]
+pub enum NtfyMessage {
+    Subscribe {
+        server: String,
+        topic: String,
+        respond_to: oneshot::Sender<Result<SubscriptionHandle, Vec<anyhow::Error>>>,
+    },
+    Unsubscribe {
+        server: String,
+        topic: String,
+        respond_to: oneshot::Sender<anyhow::Result<()>>,
+    },
+    RefreshAll {
+        respond_to: oneshot::Sender<anyhow::Result<()>>,
+    },
+    ListSubscriptions {
+        respond_to: oneshot::Sender<anyhow::Result<Vec<SubscriptionHandle>>>,
+    },
+    ListAccounts {
+        respond_to: oneshot::Sender<anyhow::Result<Vec<Account>>>,
+    },
+    WatchSubscribed {
+        respond_to: oneshot::Sender<anyhow::Result<()>>,
+    },
+    Shutdown,
+}
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct WatchKey {
@@ -23,26 +51,39 @@ pub struct WatchKey {
     topic: String,
 }
 
-#[derive(Clone)]
-pub struct Ntfy {
-    listener_handles: Arc<RwLock<HashMap<WatchKey, Listener>>>,
+pub struct NtfyActor {
+    listener_handles: Arc<RwLock<HashMap<WatchKey, SubscriptionHandle>>>,
     env: SharedEnv,
+    command_rx: mpsc::Receiver<NtfyMessage>,
 }
 
-impl Ntfy {
-    pub fn new(env: SharedEnv) -> Self {
-        Self {
+#[derive(Clone)]
+pub struct NtfyHandle {
+    command_tx: mpsc::Sender<NtfyMessage>,
+}
+
+impl NtfyActor {
+    pub fn new(env: SharedEnv) -> (Self, NtfyHandle) {
+        let (command_tx, command_rx) = mpsc::channel(32);
+
+        let actor = Self {
             listener_handles: Default::default(),
             env,
-        }
+            command_rx,
+        };
+
+        let handle = NtfyHandle { command_tx };
+
+        (actor, handle)
     }
-    pub async fn subscribe(
+
+    async fn handle_subscribe(
         &self,
-        server: &str,
-        topic: &str,
-    ) -> Result<Listener, Vec<anyhow::Error>> {
-        let subscription = models::Subscription::builder(topic.to_owned())
-            .server(server.to_string())
+        server: String,
+        topic: String,
+    ) -> Result<SubscriptionHandle, Vec<anyhow::Error>> {
+        let subscription = models::Subscription::builder(topic.clone())
+            .server(server.clone())
             .build()
             .map_err(|e| e.into_iter().map(|e| anyhow!(e)).collect::<Vec<_>>())?;
 
@@ -50,81 +91,94 @@ impl Ntfy {
         db.insert_subscription(subscription.clone())
             .map_err(|e| vec![anyhow!(e)])?;
 
-        let listener = self.listen(subscription).await;
-        listener.map_err(|e| vec![anyhow!(e)])
+        self.listen(subscription)
+            .await
+            .map_err(|e| vec![anyhow!(e)])
     }
 
-    pub async fn unsubscribe(&mut self, server: &str, topic: &str) -> anyhow::Result<()> {
-        let listener = self.listener_handles.write().await.remove(&WatchKey {
-            server: server.to_string(),
-            topic: topic.to_string(),
+    async fn handle_unsubscribe(&mut self, server: String, topic: String) -> anyhow::Result<()> {
+        let subscription = self.listener_handles.write().await.remove(&WatchKey {
+            server: server.clone(),
+            topic: topic.clone(),
         });
-        if let Some(listener) = listener {
-            listener.commands.send(ListenerCommand::Shutdown)?;
+
+        if let Some(sub) = subscription {
+            sub.shutdown().await?;
         }
 
-        self.env.db.remove_subscription(server, topic)?;
+        self.env.db.remove_subscription(&server, &topic)?;
         info!(server, topic, "Unsubscribed");
         Ok(())
     }
 
-    // TODO rename reconnect_all
-    pub async fn refresh_all(&mut self) -> anyhow::Result<()> {
-        for listener in self.listener_handles.read().await.values() {
-            listener.commands.send(ListenerCommand::Restart)?;
+    pub async fn run(&mut self) {
+        while let Some(msg) = self.command_rx.recv().await {
+            match msg {
+                NtfyMessage::Subscribe {
+                    server,
+                    topic,
+                    respond_to,
+                } => {
+                    let result = self.handle_subscribe(server, topic).await;
+                    let _ = respond_to.send(result);
+                }
+
+                NtfyMessage::Unsubscribe {
+                    server,
+                    topic,
+                    respond_to,
+                } => {
+                    let result = self.handle_unsubscribe(server, topic).await;
+                    let _ = respond_to.send(result);
+                }
+
+                NtfyMessage::RefreshAll { respond_to } => {
+                    let mut res = Ok(());
+                    for sub in self.listener_handles.read().await.values() {
+                        res = sub.restart().await;
+                        if res.is_err() {
+                            break;
+                        }
+                    }
+                    let _ = respond_to.send(res);
+                }
+
+                NtfyMessage::ListSubscriptions { respond_to } => {
+                    let subs = self
+                        .listener_handles
+                        .read()
+                        .await
+                        .values()
+                        .cloned()
+                        .collect();
+                    let _ = respond_to.send(Ok(subs));
+                }
+
+                NtfyMessage::ListAccounts { respond_to } => {
+                    let accounts = self
+                        .env
+                        .credentials
+                        .list_all()
+                        .into_iter()
+                        .map(|(server, credential)| Account {
+                            server,
+                            username: credential.username,
+                        })
+                        .collect();
+                    let _ = respond_to.send(Ok(accounts));
+                }
+
+                NtfyMessage::WatchSubscribed { respond_to } => {
+                    let result = self.handle_watch_subscribed().await;
+                    let _ = respond_to.send(result);
+                }
+
+                NtfyMessage::Shutdown => break,
+            }
         }
-        Ok(())
     }
 
-    pub async fn list_subscriptions(&mut self) -> anyhow::Result<Vec<Listener>> {
-        let values = self
-            .listener_handles
-            .read()
-            .await
-            .values()
-            .cloned()
-            .collect::<Vec<_>>();
-
-        Ok(values)
-    }
-
-    pub async fn list_accounts(&mut self) -> anyhow::Result<Vec<Account>> {
-        let values = self.env.credentials.list_all();
-        let res = values
-            .into_iter()
-            .map(|(server, credential)| Account {
-                server,
-                username: credential.username,
-            })
-            .collect();
-
-        Ok(res)
-    }
-
-    pub fn listen(
-        &self,
-        sub: models::Subscription,
-    ) -> impl Future<Output = anyhow::Result<Listener>> {
-        let server = sub.server.clone();
-        let topic = sub.topic.clone();
-        let listener = Listener::new(ListenerConfig {
-            http_client: self.env.nullable_http.clone(),
-            credentials: self.env.credentials.clone(),
-            endpoint: server.clone(),
-            topic: topic.clone(),
-            since: sub.read_until,
-        });
-        let listener_handles = self.listener_handles.clone();
-        async move {
-            listener_handles
-                .write()
-                .await
-                .insert(WatchKey { server, topic }, listener.clone());
-            Ok(listener)
-        }
-    }
-
-    pub async fn watch_subscribed(&mut self) -> anyhow::Result<()> {
+    async fn handle_watch_subscribed(&mut self) -> anyhow::Result<()> {
         let f: Vec<_> = self
             .env
             .db
@@ -132,48 +186,227 @@ impl Ntfy {
             .into_iter()
             .map(|m| self.listen(m))
             .collect();
+
         join_all(f.into_iter().map(|x| async move {
             if let Err(e) = x.await {
                 error!(error = ?e, "Can't rewatch subscribed topic");
             }
         }))
         .await;
+
         Ok(())
     }
 
-    fn add_account(&mut self) {}
-    fn remove_account(&mut self) {}
+    fn listen(
+        &self,
+        sub: models::Subscription,
+    ) -> impl Future<Output = anyhow::Result<SubscriptionHandle>> {
+        let server = sub.server.clone();
+        let topic = sub.topic.clone();
+        let listener = ListenerActor::new(ListenerConfig {
+            http_client: self.env.nullable_http.clone(),
+            credentials: self.env.credentials.clone(),
+            endpoint: server.clone(),
+            topic: topic.clone(),
+            since: sub.read_until,
+        });
+        let listener_handles = self.listener_handles.clone();
+        let sub = SubscriptionHandle::new(listener.clone(), sub, &self.env);
 
+        async move {
+            listener_handles
+                .write()
+                .await
+                .insert(WatchKey { server, topic }, sub.clone());
+            Ok(sub)
+        }
+    }
+}
+
+impl NtfyHandle {
+    pub async fn subscribe(
+        &self,
+        server: &str,
+        topic: &str,
+    ) -> Result<SubscriptionHandle, Vec<anyhow::Error>> {
+        let (tx, rx) = oneshot::channel();
+        self.command_tx
+            .send(NtfyMessage::Subscribe {
+                server: server.to_string(),
+                topic: topic.to_string(),
+                respond_to: tx,
+            })
+            .await
+            .map_err(|_| vec![anyhow!("Actor mailbox error")])?;
+
+        rx.await
+            .map_err(|_| vec![anyhow!("Actor response error")])?
+    }
+
+    pub async fn unsubscribe(&self, server: &str, topic: &str) -> anyhow::Result<()> {
+        let (tx, rx) = oneshot::channel();
+        self.command_tx
+            .send(NtfyMessage::Unsubscribe {
+                server: server.to_string(),
+                topic: topic.to_string(),
+                respond_to: tx,
+            })
+            .await
+            .map_err(|_| anyhow!("Actor mailbox error"))?;
+
+        rx.await.map_err(|_| anyhow!("Actor response error"))?
+    }
+
+    pub async fn refresh_all(&self) -> anyhow::Result<()> {
+        let (tx, rx) = oneshot::channel();
+        self.command_tx
+            .send(NtfyMessage::RefreshAll { respond_to: tx })
+            .await
+            .map_err(|_| anyhow!("Actor mailbox error"))?;
+
+        rx.await.map_err(|_| anyhow!("Actor response error"))?
+    }
+
+    pub async fn list_subscriptions(&self) -> anyhow::Result<Vec<SubscriptionHandle>> {
+        let (tx, rx) = oneshot::channel();
+        self.command_tx
+            .send(NtfyMessage::ListSubscriptions { respond_to: tx })
+            .await
+            .map_err(|_| anyhow!("Actor mailbox error"))?;
+
+        rx.await.map_err(|_| anyhow!("Actor response error"))?
+    }
+
+    pub async fn list_accounts(&self) -> anyhow::Result<Vec<Account>> {
+        let (tx, rx) = oneshot::channel();
+        self.command_tx
+            .send(NtfyMessage::ListAccounts { respond_to: tx })
+            .await
+            .map_err(|_| anyhow!("Actor mailbox error"))?;
+
+        rx.await.map_err(|_| anyhow!("Actor response error"))?
+    }
+
+    pub async fn watch_subscribed(&self) -> anyhow::Result<()> {
+        let (tx, rx) = oneshot::channel();
+        self.command_tx
+            .send(NtfyMessage::WatchSubscribed { respond_to: tx })
+            .await
+            .map_err(|_| anyhow!("Actor mailbox error"))?;
+
+        rx.await.map_err(|_| anyhow!("Actor response error"))?
+    }
+}
 
 pub fn start(
     socket_path: std::path::PathBuf,
     dbpath: &str,
     notification_proxy: Arc<dyn models::NotificationProxy>,
     network_proxy: Arc<dyn models::NetworkMonitorProxy>,
-) -> anyhow::Result<Ntfy> {
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()?;
-
+) -> anyhow::Result<NtfyHandle> {
     let dbpath = dbpath.to_owned();
-    let credentials = rt.block_on(async { crate::credentials::Credentials::new().await.unwrap() });
-    let local = tokio::task::LocalSet::new();
 
-    let env = SharedEnv {
-        db: Db::connect(&dbpath).unwrap(),
-        proxy: notification_proxy,
-        http: build_client().unwrap(),
-        nullable_http: HttpClient::new(build_client().unwrap()),
-        network: network_proxy,
-        credentials,
-    };
-    let ntfy = Ntfy::new(env);
-    let mut ntfy_clone = ntfy.clone();
-    local.spawn_local(async move {
-        ntfy_clone.watch_subscribed().await.unwrap();
+    // Create a channel to receive the handle from the spawned thread
+    let (handle_tx, handle_rx) = oneshot::channel();
+
+    std::thread::spawn(move || {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        // Create everything inside the new thread's runtime
+        let credentials =
+            rt.block_on(async move { crate::credentials::Credentials::new().await.unwrap() });
+
+        let env = SharedEnv {
+            db: Db::connect(&dbpath).unwrap(),
+            proxy: notification_proxy,
+            http: build_client().unwrap(),
+            nullable_http: HttpClient::new(build_client().unwrap()),
+            network: network_proxy,
+            credentials,
+        };
+
+        let (mut actor, handle) = NtfyActor::new(env);
+        let handle_clone = handle.clone();
+
+        // Send the handle back to the calling thread
+        handle_tx.send(handle.clone());
+
+        rt.block_on({
+            let local_set = LocalSet::new();
+            // Spawn the watch_subscribed task
+            local_set.spawn_local(async move {
+                if let Err(e) = handle_clone.watch_subscribed().await {
+                    error!(error = ?e, "Failed to watch subscribed topics");
+                }
+            });
+
+            // Run the actor
+            local_set.spawn_local(async move {
+                actor.run().await;
+            });
+            local_set
+        })
     });
 
-    Ok(ntfy)
+    // Wait for the handle from the spawned thread
+    Ok(handle_rx
+        .blocking_recv()
+        .map_err(|_| anyhow!("Failed to receive actor handle"))?)
 }
 
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use models::Message;
+    use tokio::time::sleep;
+
+    use crate::ListenerEvent;
+
+    use super::*;
+
+    #[test]
+    fn test_subscribe_and_publish() {
+        let notification_proxy = Arc::new(NullNotifier::new());
+        let network_proxy = Arc::new(NullNetworkMonitor::new());
+        let dbpath = ":memory:";
+        let socket_path = std::path::PathBuf::from("/tmp/ntfy.sock");
+
+        let handle = start(socket_path, dbpath, notification_proxy, network_proxy).unwrap();
+
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        rt.block_on(async move {
+            let server = "http://localhost:8000";
+            let topic = "test_topic";
+
+            // Subscribe to the topic
+            let subscription_handle = handle.subscribe(server, topic).await.unwrap();
+
+            // Publish a message
+            let message = serde_json::to_string(&Message {
+                topic: topic.to_string(),
+                ..Default::default()
+            })
+            .unwrap();
+            let result = subscription_handle.publish(message).await;
+            assert!(result.is_ok());
+
+            sleep(Duration::from_millis(250)).await;
+
+            // Attach to the subscription and check if the message is received and stored
+            let (events, receiver) = subscription_handle.attach().await;
+            dbg!(&events);
+            assert!(events.iter().any(|event| match event {
+                ListenerEvent::Message(msg) => msg.topic == topic,
+                _ => false,
+            }));
+        });
+    }
 }
