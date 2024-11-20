@@ -7,7 +7,6 @@ use adw::subclass::prelude::*;
 use futures::prelude::*;
 use gtk::{gio, glib};
 use ntfy_daemon::models;
-use ntfy_daemon::ntfy_capnp::system_notifier;
 use ntfy_daemon::NtfyHandle;
 use tracing::warn;
 

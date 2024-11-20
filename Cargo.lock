@@ -1957,8 +1957,6 @@ dependencies = [
  "anyhow",
  "async-channel",
  "async-trait",
- "capnp 0.18.13",
- "capnp-rpc",
  "capnpc",
  "clap",
  "futures",

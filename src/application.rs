@@ -13,7 +13,6 @@ use gio::SocketClient;
 use gio::UnixSocketAddress;
 use gtk::{gdk, gio, glib};
 use ntfy_daemon::models;
-use ntfy_daemon::ntfy_capnp::system_notifier;
 use ntfy_daemon::NtfyHandle;
 use tracing::{debug, error, info, warn};
 

@@ -13,9 +13,28 @@ use crate::{
     http_client::HttpClient,
     message_repo::Db,
     models::{self, Account},
-    topic_listener::build_client,
     ListenerActor, ListenerCommand, ListenerConfig, ListenerHandle, SharedEnv, SubscriptionHandle,
 };
+
+
+const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(240); // 4 minutes
+
+
+pub fn build_client() -> anyhow::Result<reqwest::Client> {
+    Ok(reqwest::Client::builder()
+        .connect_timeout(CONNECT_TIMEOUT)
+        .pool_idle_timeout(TIMEOUT)
+        // rustls is used because HTTP 2 isn't discovered with native-tls.
+        // HTTP 2 is required to multiplex multiple requests over a single connection.
+        // You can check that the app is using a single connection to a server by doing
+        // ```
+        // ping ntfy.sh # to get the ip address
+        // netstat | grep $ip
+        // ```
+        .use_rustls_tls()
+        .build()?)
+}
 
 // Message types for the actor
 #[derive()]

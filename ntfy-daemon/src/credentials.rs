@@ -166,8 +166,7 @@ impl Credentials {
         let values = self
             .keyring
             .search_items(attrs)
-            .await
-            .map_err(|e| capnp::Error::failed(e.to_string()))?;
+            .await?;
 
         let mut lock = self.creds.write().unwrap();
         lock.clear();
@@ -206,8 +205,7 @@ impl Credentials {
         ]);
         self.keyring
             .create_item("Password", attrs, password, true)
-            .await
-            .map_err(|e| capnp::Error::failed(e.to_string()))?;
+            .await?;
 
         self.creds.write().unwrap().insert(
             server.to_string(),
@@ -234,8 +232,7 @@ impl Credentials {
         ]);
         self.keyring
             .delete(attrs)
-            .await
-            .map_err(|e| capnp::Error::failed(e.to_string()))?;
+            .await?;
         self.creds
             .write()
             .unwrap()

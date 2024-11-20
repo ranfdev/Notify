@@ -9,7 +9,6 @@ use glib::subclass::prelude::*;
 use glib::Properties;
 use gtk::glib::MainContext;
 use gtk::{gio, glib};
-use ntfy_daemon::ntfy_capnp::{output_channel, subscription, watch_handle};
 use ntfy_daemon::{models, ConnectionState, ListenerEvent};
 use tracing::{debug, error, instrument};
 
@@ -61,7 +60,6 @@ mod imp {
         pub read_until: Cell<u64>,
         pub messages: gio::ListStore,
         pub client: OnceCell<ntfy_daemon::SubscriptionHandle>,
-        pub remote_handle: RefCell<Option<watch_handle::Client>>,
     }
 
     impl Subscription {
@@ -84,7 +82,6 @@ mod imp {
                 client: Default::default(),
                 unread_count: Default::default(),
                 read_until: Default::default(),
-                remote_handle: Default::default(),
             }
         }
     }

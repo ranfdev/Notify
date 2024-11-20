@@ -2,8 +2,6 @@ pub mod credentials;
 pub mod message_repo;
 pub mod models;
 pub mod retry;
-pub mod system_client;
-pub mod topic_listener;
 mod http_client;
 mod output_tracker;
 mod listener;
@@ -14,11 +12,6 @@ pub use subscription::SubscriptionHandle;
 pub use listener::*;
 pub use ntfy::NtfyHandle;
 pub use ntfy::start;
-
-pub mod ntfy_capnp {
-    include!(concat!(env!("OUT_DIR"), "/src/ntfy_capnp.rs"));
-}
-
 use std::sync::Arc;
 
 use http_client::HttpClient;
@@ -51,8 +44,3 @@ pub enum Error {
     SubscriptionNotFound(String),
 }
 
-impl From<Error> for capnp::Error {
-    fn from(value: Error) -> Self {
-        capnp::Error::failed(format!("{:?}", value))
-    }
-}
