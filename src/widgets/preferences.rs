@@ -3,11 +3,12 @@ use std::cell::OnceCell;
 use adw::prelude::*;
 use adw::subclass::prelude::*;
 use gtk::{gio, glib};
-use ntfy_daemon::ntfy_capnp::system_notifier;
 
 use crate::error::*;
 
 mod imp {
+    use ntfy_daemon::NtfyHandle;
+
     use super::*;
 
     #[derive(gtk::CompositeTemplate)]
@@ -25,7 +26,7 @@ mod imp {
         pub added_accounts: TemplateChild<gtk::ListBox>,
         #[template_child]
         pub added_accounts_group: TemplateChild<adw::PreferencesGroup>,
-        pub notifier: OnceCell<system_notifier::Client>,
+        pub notifier: OnceCell<NtfyHandle>,
     }
 
     impl Default for NotifyPreferences {
@@ -77,7 +78,7 @@ glib::wrapper! {
 }
 
 impl NotifyPreferences {
-    pub fn new(notifier: system_notifier::Client) -> Self {
+    pub fn new(notifier: ntfy_daemon::NtfyHandle ) -> Self {
         let obj: Self = glib::Object::builder().build();
         obj.imp()
             .notifier
@@ -100,21 +101,16 @@ impl NotifyPreferences {
 
     pub async fn show_accounts(&self) -> anyhow::Result<()> {
         let imp = self.imp();
-        let req = imp.notifier.get().unwrap().list_accounts_request();
-        let res = req.send().promise.await?;
-
-        let accounts = res.get()?.get_list()?;
+        let accounts = imp.notifier.get().unwrap().list_accounts().await?;
 
         imp.added_accounts_group.set_visible(!accounts.is_empty());
 
         imp.added_accounts.remove_all();
         for a in accounts {
-            let server = a.get_server()?.to_string()?;
-            let username = a.get_username()?.to_string()?;
 
             let row = adw::ActionRow::builder()
-                .title(&server)
-                .subtitle(&username)
+                .title(&a.server)
+                .subtitle(&a.username)
                 .build();
             row.add_css_class("property");
             row.add_suffix(&{
@@ -125,10 +121,9 @@ impl NotifyPreferences {
                 let this = self.clone();
                 btn.connect_clicked(move |btn| {
                     let this = this.clone();
-                    let username = username.clone();
-                    let server = server.clone();
+                    let a = a.clone();
                     btn.error_boundary()
-                        .spawn(async move { this.remove_account(&server, &username).await });
+                        .spawn(async move { this.remove_account(&a.server).await });
                 });
                 btn
             });
@@ -142,29 +137,14 @@ impl NotifyPreferences {
         let server = imp.server_entry.text();
         let username = imp.username_entry.text();
 
-        let mut req = imp.notifier.get().unwrap().add_account_request();
-        let mut acc = req.get().get_account()?;
-        acc.set_username(username[..].into());
-        acc.set_server(server[..].into());
-        req.get().set_password(password[..].into());
-
-        req.send().promise.await?;
-
+        imp.notifier.get().unwrap().add_account(&server, &username, &password).await?;
         self.show_accounts().await?;
 
         Ok(())
     }
-    pub async fn remove_account(&self, server: &str, username: &str) -> anyhow::Result<()> {
-        let mut req = self.imp().notifier.get().unwrap().remove_account_request();
-        let mut acc = req.get().get_account()?;
-
-        acc.set_username(username[..].into());
-        acc.set_server(server[..].into());
-
-        req.send().promise.await?;
-
+    pub async fn remove_account(&self, server: &str) -> anyhow::Result<()> {
+        self.imp().notifier.get().unwrap().remove_account(server).await?;
         self.show_accounts().await?;
-
         Ok(())
     }
 }

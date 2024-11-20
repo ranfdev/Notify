@@ -229,10 +229,10 @@ impl NotifyApplication {
     }
 
     fn show_preferences(&self) {
-        // let win = crate::widgets::NotifyPreferences::new(
-        //     self.main_window().imp().notifier.get().unwrap().clone(),
-        // );
-        // win.present(Some(&self.main_window()));
+        let win = crate::widgets::NotifyPreferences::new(
+            self.main_window().imp().notifier.get().unwrap().clone(),
+        );
+        win.present(Some(&self.main_window()));
     }
 
     pub fn run(&self) -> glib::ExitCode {

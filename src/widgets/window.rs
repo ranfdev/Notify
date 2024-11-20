@@ -141,7 +141,8 @@ mod imp {
             });
             klass.install_action("win.clear-notifications", None, |this, _, _| {
                 this.selected_subscription().map(|sub| {
-                    this.error_boundary().spawn(async move {sub.clear_notifications().await});
+                    this.error_boundary()
+                        .spawn(async move { sub.clear_notifications().await });
                 });
             });
             //klass.bind_template_instance_callbacks();
@@ -288,24 +289,20 @@ impl NotifyWindow {
     }
 
     fn unsubscribe(&self) {
-        // let mut req = self.notifier().unsubscribe_request();
-        // let sub = self.selected_subscription().unwrap();
+        let sub = self.selected_subscription().unwrap();
 
-        // req.get().set_server(sub.server().as_str().into());
-        // req.get().set_topic(sub.topic().as_str().into());
+        let this = self.clone();
+        self.error_boundary().spawn(async move {
+            this.notifier()
+                .unsubscribe(sub.server().as_str(), sub.topic().as_str())
+                .await?;
 
-        // let res = req.send();
-        // let this = self.clone();
-
-        // self.error_boundary().spawn(async move {
-        //     let imp = this.imp();
-        //     res.promise.await?;
-
-        //     if let Some(i) = imp.subscription_list_model.find(&sub) {
-        //         imp.subscription_list_model.remove(i);
-        //     }
-        //     Ok(())
-        // });
+            let imp = this.imp();
+            if let Some(i) = imp.subscription_list_model.find(&sub) {
+                imp.subscription_list_model.remove(i);
+            }
+            Ok(())
+        });
     }
     fn notifier(&self) -> &NtfyHandle {
         self.imp().notifier.get().unwrap()
@@ -406,7 +403,7 @@ impl NotifyWindow {
         {
             self.selected_subscription().map(|sub| {
                 self.error_boundary()
-                    .spawn(async move {sub.flag_all_as_read().await});
+                    .spawn(async move { sub.flag_all_as_read().await });
             });
         }
     }

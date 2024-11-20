@@ -42,6 +42,16 @@ pub enum NtfyMessage {
     WatchSubscribed {
         respond_to: oneshot::Sender<anyhow::Result<()>>,
     },
+    AddAccount {
+        server: String,
+        username: String,
+        password: String,
+        respond_to: oneshot::Sender<anyhow::Result<()>>,
+    },
+    RemoveAccount {
+        server: String,
+        respond_to: oneshot::Sender<anyhow::Result<()>>,
+    },
     Shutdown,
 }
 
@@ -173,6 +183,21 @@ impl NtfyActor {
                     let _ = respond_to.send(result);
                 }
 
+                NtfyMessage::AddAccount {
+                    server,
+                    username,
+                    password,
+                    respond_to,
+                } => {
+                    let result = self.env.credentials.insert(&server, &username, &password).await;
+                    let _ = respond_to.send(result);
+                }
+
+                NtfyMessage::RemoveAccount { server, respond_to } => {
+                    let result = self.env.credentials.delete(&server).await;
+                    let _ = respond_to.send(result);
+                }
+
                 NtfyMessage::Shutdown => break,
             }
         }
@@ -291,6 +316,34 @@ impl NtfyHandle {
         let (tx, rx) = oneshot::channel();
         self.command_tx
             .send(NtfyMessage::WatchSubscribed { respond_to: tx })
+            .await
+            .map_err(|_| anyhow!("Actor mailbox error"))?;
+
+        rx.await.map_err(|_| anyhow!("Actor response error"))?
+    }
+
+    pub async fn add_account(&self, server: &str, username: &str, password: &str) -> anyhow::Result<()> {
+        let (tx, rx) = oneshot::channel();
+        self.command_tx
+            .send(NtfyMessage::AddAccount {
+                server: server.to_string(),
+                username: username.to_string(),
+                password: password.to_string(),
+                respond_to: tx,
+            })
+            .await
+            .map_err(|_| anyhow!("Actor mailbox error"))?;
+
+        rx.await.map_err(|_| anyhow!("Actor response error"))?
+    }
+
+    pub async fn remove_account(&self, server: &str) -> anyhow::Result<()> {
+        let (tx, rx) = oneshot::channel();
+        self.command_tx
+            .send(NtfyMessage::RemoveAccount {
+                server: server.to_string(),
+                respond_to: tx,
+            })
             .await
             .map_err(|_| anyhow!("Actor mailbox error"))?;
 
