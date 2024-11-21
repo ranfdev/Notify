@@ -165,7 +165,7 @@ impl Subscription {
     }
 
     fn handle_event(&self, ev: ListenerEvent) {
-        match dbg!(ev) {
+        match ev {
             ListenerEvent::Message(msg) => {
                 self.imp().messages.append(&glib::BoxedAnyObject::new(msg));
                 self.update_unread_count();
