@@ -34,6 +34,7 @@ impl RequestInfo {
 #[async_trait]
 trait LightHttpClient: Send + Sync {
     fn get(&self, url: &str) -> RequestBuilder;
+    fn post(&self, url: &str) -> RequestBuilder;
     async fn execute(&self, request: Request) -> Result<Response>;
 }
 
@@ -41,6 +42,10 @@ trait LightHttpClient: Send + Sync {
 impl LightHttpClient for Client {
     fn get(&self, url: &str) -> RequestBuilder {
         self.get(url)
+    }
+
+    fn post(&self, url: &str) -> RequestBuilder {
+        self.post(url)
     }
 
     async fn execute(&self, request: Request) -> Result<Response> {
@@ -75,6 +80,10 @@ impl HttpClient {
 
     pub fn get(&self, url: &str) -> RequestBuilder {
         self.client.get(url)
+    }
+
+    pub fn post(&self, url: &str) -> RequestBuilder {
+        self.client.post(url)
     }
 
     pub async fn execute(&self, request: Request) -> Result<Response> {
@@ -181,6 +190,10 @@ impl NullableClient {
 impl LightHttpClient for NullableClient {
     fn get(&self, url: &str) -> RequestBuilder {
         Client::new().get(url)
+    }
+
+    fn post(&self, url: &str) -> RequestBuilder {
+        Client::new().post(url)
     }
 
     async fn execute(&self, request: Request) -> Result<Response> {

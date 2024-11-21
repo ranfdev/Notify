@@ -249,8 +249,8 @@ impl NtfyActor {
     ) -> impl Future<Output = anyhow::Result<SubscriptionHandle>> {
         let server = sub.server.clone();
         let topic = sub.topic.clone();
-        let listener = ListenerActor::new(ListenerConfig {
-            http_client: self.env.nullable_http.clone(),
+        let listener = ListenerHandle::new(ListenerConfig {
+            http_client: self.env.http_client.clone(),
             credentials: self.env.credentials.clone(),
             endpoint: server.clone(),
             topic: topic.clone(),
@@ -378,7 +378,6 @@ impl NtfyHandle {
 }
 
 pub fn start(
-    socket_path: std::path::PathBuf,
     dbpath: &str,
     notification_proxy: Arc<dyn models::NotificationProxy>,
     network_proxy: Arc<dyn models::NetworkMonitorProxy>,
@@ -400,10 +399,9 @@ pub fn start(
 
         let env = SharedEnv {
             db: Db::connect(&dbpath).unwrap(),
-            proxy: notification_proxy,
-            http: build_client().unwrap(),
-            nullable_http: HttpClient::new(build_client().unwrap()),
-            network: network_proxy,
+            notifier: notification_proxy,
+            http_client: HttpClient::new(build_client().unwrap()),
+            network_monitor: network_proxy,
             credentials,
         };
 
@@ -452,9 +450,8 @@ mod tests {
         let notification_proxy = Arc::new(NullNotifier::new());
         let network_proxy = Arc::new(NullNetworkMonitor::new());
         let dbpath = ":memory:";
-        let socket_path = std::path::PathBuf::from("/tmp/ntfy.sock");
 
-        let handle = start(socket_path, dbpath, notification_proxy, network_proxy).unwrap();
+        let handle = start(dbpath, notification_proxy, network_proxy).unwrap();
 
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()

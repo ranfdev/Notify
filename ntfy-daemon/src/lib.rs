@@ -19,10 +19,9 @@ use http_client::HttpClient;
 #[derive(Clone)]
 pub struct SharedEnv {
     db: message_repo::Db,
-    proxy: Arc<dyn models::NotificationProxy>,
-    http: reqwest::Client,
-    nullable_http: HttpClient,
-    network: Arc<dyn models::NetworkMonitorProxy>,
+    notifier: Arc<dyn models::NotificationProxy>,
+    http_client: HttpClient,
+    network_monitor: Arc<dyn models::NetworkMonitorProxy>,
     credentials: credentials::Credentials,
 }
 

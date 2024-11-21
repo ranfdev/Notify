@@ -30,7 +30,6 @@ mod imp {
     #[derive(Default)]
     pub struct NotifyApplication {
         pub window: RefCell<WeakRef<NotifyWindow>>,
-        pub socket_path: RefCell<PathBuf>,
         pub hold_guard: OnceCell<gio::ApplicationHoldGuard>,
         pub ntfy: OnceCell<NtfyHandle>,
     }
@@ -59,8 +58,6 @@ mod imp {
             // Set icons for shell
             gtk::Window::set_default_icon_name(APP_ID);
 
-            let socket_path = glib::user_data_dir().join("com.ranfdev.Notify.socket");
-            self.socket_path.replace(socket_path);
             app.setup_css();
             app.setup_gactions();
             app.setup_accels();
@@ -72,7 +69,7 @@ mod imp {
             let app = self.obj();
 
             if self.hold_guard.get().is_none() {
-                app.ensure_rpc_running(&self.socket_path.borrow());
+                app.ensure_rpc_running();
             }
 
             glib::MainContext::default().spawn_local(async move {
@@ -109,7 +106,7 @@ impl NotifyApplication {
                 return;
             }
         }
-        self.build_window(&self.imp().socket_path.borrow());
+        self.build_window();
         self.main_window().present();
     }
 
@@ -254,7 +251,7 @@ impl NotifyApplication {
         Ok(())
     }
 
-    fn ensure_rpc_running(&self, socket_path: &Path) {
+    fn ensure_rpc_running(&self) {
         let dbpath = glib::user_data_dir().join("com.ranfdev.Notify.sqlite");
         info!(database_path = %dbpath.display());
 
@@ -318,13 +315,7 @@ impl NotifyApplication {
             }
         }
         let proxies = std::sync::Arc::new(Proxies { notification: s });
-        let ntfy = ntfy_daemon::start(
-            socket_path.to_owned(),
-            dbpath.to_str().unwrap(),
-            proxies.clone(),
-            proxies,
-        )
-        .unwrap();
+        let ntfy = ntfy_daemon::start(dbpath.to_str().unwrap(), proxies.clone(), proxies).unwrap();
         self.imp()
             .ntfy
             .set(ntfy)
@@ -333,7 +324,7 @@ impl NotifyApplication {
         self.imp().hold_guard.set(self.hold()).unwrap();
     }
 
-    fn build_window(&self, socket_path: &Path) {
+    fn build_window(&self) {
         let ntfy = self.imp().ntfy.get().unwrap();
 
         let window = NotifyWindow::new(self, ntfy.clone());

@@ -182,7 +182,7 @@ impl SubscriptionActor {
     async fn publish(&self, msg: String) -> anyhow::Result<()> {
         let server = &self.model.server;
         let creds = self.env.credentials.get(server);
-        let mut req = self.env.http.post(server);
+        let mut req = self.env.http_client.post(server);
         if let Some(creds) = creds {
             req = req.basic_auth(creds.username, Some(creds.password));
         }
@@ -212,7 +212,7 @@ impl SubscriptionActor {
         if !already_stored {
             // Show notification. If this fails, panic
             if !{ self.model.muted } {
-                let notifier = self.env.proxy.clone();
+                let notifier = self.env.notifier.clone();
 
                 let title = { msg.notification_title(&self.model) };
 

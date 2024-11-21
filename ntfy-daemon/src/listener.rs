@@ -114,35 +114,6 @@ pub struct ListenerActor {
 }
 
 impl ListenerActor {
-    pub fn new(config: ListenerConfig) -> ListenerHandle {
-        let (event_tx, event_rx) = async_channel::bounded(64);
-        let (commands_tx, commands_rx) = mpsc::channel(1);
-
-        let config_clone = config.clone();
-
-        // use a new local set to isolate panics
-        let local_set = LocalSet::new();
-        local_set.spawn_local(async move {
-            let this = Self {
-                event_tx,
-                commands_rx: Some(commands_rx),
-                config: config_clone,
-                state: ConnectionState::Unitialized,
-            };
-
-            this.run_loop().await;
-        });
-        spawn_local(local_set);
-
-        ListenerHandle {
-            events: event_rx,
-            config,
-            commands: commands_tx,
-            listener_actor: Arc::new(RwLock::new(None)),
-            join_handle: Arc::new(None),
-        }
-    }
-
     pub async fn run_loop(mut self) {
         let mut commands_rx = self.commands_rx.take().unwrap();
         loop {
@@ -280,6 +251,35 @@ pub struct ListenerHandle {
 }
 
 impl ListenerHandle {
+    pub fn new(config: ListenerConfig) -> ListenerHandle {
+        let (event_tx, event_rx) = async_channel::bounded(64);
+        let (commands_tx, commands_rx) = mpsc::channel(1);
+
+        let config_clone = config.clone();
+
+        // use a new local set to isolate panics
+        let local_set = LocalSet::new();
+        local_set.spawn_local(async move {
+            let this = ListenerActor {
+                event_tx,
+                commands_rx: Some(commands_rx),
+                config: config_clone,
+                state: ConnectionState::Unitialized,
+            };
+
+            this.run_loop().await;
+        });
+        spawn_local(local_set);
+
+        Self {
+            events: event_rx,
+            config,
+            commands: commands_tx,
+            listener_actor: Arc::new(RwLock::new(None)),
+            join_handle: Arc::new(None),
+        }
+    }
+
     // the response will be sent as an event in self.events
     pub async fn request_state(&self) -> ConnectionState {
         let (tx, rx) = oneshot::channel();
@@ -337,7 +337,7 @@ mod tests {
                     since: 0,
                 };
 
-                let mut listener = ListenerActor::new(config.clone());
+                let mut listener = ListenerHandle::new(config.clone());
                 let items: Vec<_> = listener.events.take(3).collect().await;
 
                 dbg!(&items);
@@ -383,7 +383,7 @@ mod tests {
                     since: 0,
                 };
 
-                let mut listener = ListenerActor::new(config.clone());
+                let mut listener = ListenerHandle::new(config.clone());
                 let items: Vec<_> = listener.events.take(3).collect().await;
 
                 dbg!(&items);
@@ -414,7 +414,7 @@ mod tests {
                 since: 0,
             };
 
-            let mut listener = ListenerActor::new(config.clone());
+            let mut listener = ListenerHandle::new(config.clone());
 
             // assert_event_matches!(listener, ListenerEvent::Connected { .. },);
         });
