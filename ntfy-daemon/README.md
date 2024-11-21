@@ -1,1 +1,0 @@
-# ntfy-daemon

@@ -17,6 +17,7 @@ https://ntfy.sh client application to receive everyday's notifications.
 ## Architecture
 
 The code is split between the GUI and the underlying ntfy-daemon.
+![](./architecture.svg)
 
 ## How to run
 Use gnome-builder to clone and run the project. Note: after clicking the "run"
