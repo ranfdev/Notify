@@ -3,7 +3,9 @@ use crate::models::NullNetworkMonitor;
 use crate::models::NullNotifier;
 use anyhow::{anyhow, Context};
 use futures::future::join_all;
+use futures::StreamExt;
 use std::{collections::HashMap, future::Future, sync::Arc};
+use tokio::select;
 use tokio::{
     sync::{broadcast, mpsc, oneshot, RwLock},
     task::{spawn_local, LocalSet},
@@ -135,85 +137,89 @@ impl NtfyActor {
     }
 
     pub async fn run(&mut self) {
-        while let Some(msg) = self.command_rx.recv().await {
-            match msg {
-                NtfyCommand::Subscribe {
-                    server,
-                    topic,
-                    resp_tx,
-                } => {
-                    let result = self.handle_subscribe(server, topic).await;
-                    let _ = resp_tx.send(result);
-                }
+        let mut network_change_stream = self.env.network_monitor.listen();
+        loop {
+            select! {
+                Some(_) = network_change_stream.next() => {
+                    let _ = self.refresh_all().await;
+                },
+                Some(command) = self.command_rx.recv() => self.handle_command(command).await,
+            };
+        }
+    }
 
-                NtfyCommand::Unsubscribe {
-                    server,
-                    topic,
-                    resp_tx,
-                } => {
-                    let result = self.handle_unsubscribe(server, topic).await;
-                    let _ = resp_tx.send(result);
-                }
+    async fn handle_command(&mut self, command: NtfyCommand) {
+        match command {
+            NtfyCommand::Subscribe {
+                server,
+                topic,
+                resp_tx,
+            } => {
+                let result = self.handle_subscribe(server, topic).await;
+                let _ = resp_tx.send(result);
+            }
 
-                NtfyCommand::RefreshAll { resp_tx } => {
-                    let mut res = Ok(());
-                    for sub in self.listener_handles.read().await.values() {
-                        res = sub.restart().await;
-                        if res.is_err() {
-                            break;
-                        }
-                    }
-                    let _ = resp_tx.send(res);
-                }
+            NtfyCommand::Unsubscribe {
+                server,
+                topic,
+                resp_tx,
+            } => {
+                let result = self.handle_unsubscribe(server, topic).await;
+                let _ = resp_tx.send(result);
+            }
 
-                NtfyCommand::ListSubscriptions { resp_tx } => {
-                    let subs = self
-                        .listener_handles
-                        .read()
-                        .await
-                        .values()
-                        .cloned()
-                        .collect();
-                    let _ = resp_tx.send(Ok(subs));
-                }
+            NtfyCommand::RefreshAll { resp_tx } => {
+                let res = self.refresh_all().await;
+                let _ = resp_tx.send(res);
+            }
 
-                NtfyCommand::ListAccounts { resp_tx } => {
-                    let accounts = self
-                        .env
-                        .credentials
-                        .list_all()
-                        .into_iter()
-                        .map(|(server, credential)| Account {
-                            server,
-                            username: credential.username,
-                        })
-                        .collect();
-                    let _ = resp_tx.send(Ok(accounts));
-                }
+            NtfyCommand::ListSubscriptions { resp_tx } => {
+                let subs = self
+                    .listener_handles
+                    .read()
+                    .await
+                    .values()
+                    .cloned()
+                    .collect();
+                let _ = resp_tx.send(Ok(subs));
+            }
 
-                NtfyCommand::WatchSubscribed { resp_tx } => {
-                    let result = self.handle_watch_subscribed().await;
-                    let _ = resp_tx.send(result);
-                }
+            NtfyCommand::ListAccounts { resp_tx } => {
+                let accounts = self
+                    .env
+                    .credentials
+                    .list_all()
+                    .into_iter()
+                    .map(|(server, credential)| Account {
+                        server,
+                        username: credential.username,
+                    })
+                    .collect();
+                let _ = resp_tx.send(Ok(accounts));
+            }
 
-                NtfyCommand::AddAccount {
-                    server,
-                    username,
-                    password,
-                    resp_tx,
-                } => {
-                    let result = self
-                        .env
-                        .credentials
-                        .insert(&server, &username, &password)
-                        .await;
-                    let _ = resp_tx.send(result);
-                }
+            NtfyCommand::WatchSubscribed { resp_tx } => {
+                let result = self.handle_watch_subscribed().await;
+                let _ = resp_tx.send(result);
+            }
 
-                NtfyCommand::RemoveAccount { server, resp_tx } => {
-                    let result = self.env.credentials.delete(&server).await;
-                    let _ = resp_tx.send(result);
-                }
+            NtfyCommand::AddAccount {
+                server,
+                username,
+                password,
+                resp_tx,
+            } => {
+                let result = self
+                    .env
+                    .credentials
+                    .insert(&server, &username, &password)
+                    .await;
+                let _ = resp_tx.send(result);
+            }
+
+            NtfyCommand::RemoveAccount { server, resp_tx } => {
+                let result = self.env.credentials.delete(&server).await;
+                let _ = resp_tx.send(result);
             }
         }
     }
@@ -260,6 +266,17 @@ impl NtfyActor {
                 .insert(WatchKey { server, topic }, sub.clone());
             Ok(sub)
         }
+    }
+
+    async fn refresh_all(&self) -> anyhow::Result<()> {
+        let mut res = Ok(());
+        for sub in self.listener_handles.read().await.values() {
+            res = sub.restart().await;
+            if res.is_err() {
+                break;
+            }
+        }
+        res
     }
 }
 
