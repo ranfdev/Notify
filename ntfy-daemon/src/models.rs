@@ -394,6 +394,6 @@ impl NullNetworkMonitor {
 
 impl NetworkMonitorProxy for NullNetworkMonitor {
     fn listen(&self) -> Pin<Box<dyn Stream<Item = ()>>> {
-        todo!()
+        Box::pin(futures::stream::empty())
     }
 }
