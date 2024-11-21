@@ -1,10 +1,8 @@
 use std::cell::Cell;
 use std::cell::OnceCell;
-use std::rc::Rc;
 
 use adw::prelude::*;
 use adw::subclass::prelude::*;
-use futures::prelude::*;
 use gtk::{gio, glib};
 use ntfy_daemon::models;
 use ntfy_daemon::NtfyHandle;

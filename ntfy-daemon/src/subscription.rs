@@ -1,11 +1,8 @@
 use crate::listener::{ListenerEvent, ListenerHandle};
-use crate::message_repo::Db;
-use crate::models::{self, NotificationProxy, ReceivedMessage};
-use crate::{Error, ServerEvent, SharedEnv};
-use std::future::Future;
-use std::sync::Arc;
+use crate::models::{self, ReceivedMessage};
+use crate::{Error, SharedEnv};
 use tokio::select;
-use tokio::sync::{broadcast, mpsc, oneshot, watch, RwLock};
+use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio::task::spawn_local;
 use tracing::{error, info, warn};
 
@@ -165,7 +162,7 @@ impl SubscriptionActor {
                             if let Ok(_) = res {
                                 self.model = new_model;
                             }
-                            resp_tx.send(res.map_err(|e| e.into()));
+                            let _ = resp_tx.send(res.map_err(|e| e.into()));
                         }
                         SubscriptionCommand::Publish {msg, resp_tx} => {
                             let _ = resp_tx.send(self.publish(msg).await);

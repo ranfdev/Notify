@@ -3,14 +3,11 @@ use std::rc::Rc;
 
 use adw::prelude::*;
 use capnp::capability::Promise;
-use capnp_rpc::pry;
-use futures::join;
 use glib::subclass::prelude::*;
 use glib::Properties;
-use gtk::glib::MainContext;
 use gtk::{gio, glib};
 use ntfy_daemon::{models, ConnectionState, ListenerEvent};
-use tracing::{debug, error, instrument};
+use tracing::{error, instrument};
 
 #[repr(u16)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -141,8 +138,6 @@ impl Subscription {
     }
 
     fn load(&self) -> Promise<(), capnp::Error> {
-        let imp = self.imp();
-
         let this = self.clone();
         Promise::from_future(async move {
             let remote_subscription = this.imp().client.get().unwrap();
@@ -222,7 +217,7 @@ impl Subscription {
                     .display_name((imp.display_name.borrow().to_string()))
                     .muted(imp.muted.get())
                     .build()
-                    .map_err(|e| anyhow::anyhow!("invalid subscription data"))?,
+                    .map_err(|e| anyhow::anyhow!("invalid subscription data {:?}", e))?,
             )
             .await?;
         Ok(())

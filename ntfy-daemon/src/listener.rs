@@ -1,29 +1,20 @@
-use std::cell::RefCell;
 use std::sync::Arc;
-use std::thread::JoinHandle;
 use std::time::Duration;
 
 use futures::{StreamExt, TryStreamExt};
 use serde::{Deserialize, Serialize};
 use tokio::io::AsyncBufReadExt;
-use tokio::spawn;
-use tokio::sync::RwLock;
-use tokio::task::{self, spawn_local, AbortHandle, LocalSet};
+use tokio::task::{self, spawn_local, LocalSet};
 use tokio::{
     select,
-    sync::{mpsc, oneshot, watch},
+    sync::{mpsc, oneshot},
 };
 use tokio_stream::wrappers::LinesStream;
 use tracing::{debug, error, info};
 
-use crate::credentials::{Credential, Credentials};
-use crate::http_client::{HttpClient, NullableClient};
-use crate::output_tracker::OutputTracker;
-use crate::{models, Error, SharedEnv};
-use tokio::time::timeout;
-
-const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
-const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(240); // 4 minutes
+use crate::credentials::Credentials;
+use crate::http_client::HttpClient;
+use crate::{models, Error};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "event")]
@@ -246,8 +237,6 @@ pub struct ListenerHandle {
     pub events: async_channel::Receiver<ListenerEvent>,
     pub config: ListenerConfig,
     pub commands: mpsc::Sender<ListenerCommand>,
-    join_handle: Arc<Option<task::JoinHandle<()>>>,
-    listener_actor: Arc<RwLock<Option<ListenerActor>>>,
 }
 
 impl ListenerHandle {
@@ -275,8 +264,6 @@ impl ListenerHandle {
             events: event_rx,
             config,
             commands: commands_tx,
-            listener_actor: Arc::new(RwLock::new(None)),
-            join_handle: Arc::new(None),
         }
     }
 
@@ -296,7 +283,8 @@ mod tests {
     use models::Subscription;
     use serde_json::json;
     use task::LocalSet;
-    use tokio_stream::wrappers::WatchStream;
+
+    use crate::http_client::NullableClient;
 
     use super::*;
 
@@ -323,7 +311,7 @@ mod tests {
                     since: 0,
                 };
 
-                let mut listener = ListenerHandle::new(config.clone());
+                let listener = ListenerHandle::new(config.clone());
                 let items: Vec<_> = listener.events.take(3).collect().await;
 
                 dbg!(&items);
@@ -369,7 +357,7 @@ mod tests {
                     since: 0,
                 };
 
-                let mut listener = ListenerHandle::new(config.clone());
+                let listener = ListenerHandle::new(config.clone());
                 let items: Vec<_> = listener.events.take(3).collect().await;
 
                 dbg!(&items);
@@ -400,7 +388,7 @@ mod tests {
                 since: 0,
             };
 
-            let mut listener = ListenerHandle::new(config.clone());
+            let listener = ListenerHandle::new(config.clone());
 
             // assert_event_matches!(listener, ListenerEvent::Connected { .. },);
         });

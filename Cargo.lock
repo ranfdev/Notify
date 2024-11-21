@@ -461,12 +461,6 @@ dependencies = [
 
 [[package]]
 name = "capnp"
-version = "0.17.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "95e65021d89250bbfe7c2791789ced2c4bdc21b0e8bb59c64f3fd6145a5fd678"
-
-[[package]]
-name = "capnp"
 version = "0.18.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b671a5b39eadb909b0c2b81d22a400d446526e651e64be9eb6674b33644a4"
@@ -480,7 +474,7 @@ version = "0.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b8697b857f5b014ff378f02817426d3b6fb90a69f32e330fe010f24fe10cf8f1"
 dependencies = [
- "capnp 0.18.13",
+ "capnp",
  "futures",
 ]
 
@@ -490,18 +484,9 @@ version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94b87a9e0f74600628e227d39b79ef8652c558a408999ac46ba22b19dbad0010"
 dependencies = [
- "capnp 0.18.13",
+ "capnp",
  "capnp-futures",
  "futures",
-]
-
-[[package]]
-name = "capnpc"
-version = "0.17.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fbbc3763fb3e6635188e9cc51ee11a26f8777c553ca377430818dbebaaf6042b"
-dependencies = [
- "capnp 0.17.2",
 ]
 
 [[package]]
@@ -1922,7 +1907,7 @@ dependencies = [
  "anyhow",
  "ashpd",
  "async-channel",
- "capnp 0.18.13",
+ "capnp",
  "capnp-rpc",
  "chrono",
  "futures",
@@ -1948,7 +1933,6 @@ dependencies = [
  "anyhow",
  "async-channel",
  "async-trait",
- "capnpc",
  "clap",
  "futures",
  "http",

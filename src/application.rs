@@ -1,16 +1,10 @@
 use std::cell::Cell;
-use std::path::Path;
-use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 
 use adw::prelude::*;
 use adw::subclass::prelude::*;
-use capnp_rpc::{rpc_twoparty_capnp, twoparty, RpcSystem};
 use futures::stream::Stream;
-use futures::AsyncReadExt;
-use gio::SocketClient;
-use gio::UnixSocketAddress;
 use gtk::{gdk, gio, glib};
 use ntfy_daemon::models;
 use ntfy_daemon::NtfyHandle;
