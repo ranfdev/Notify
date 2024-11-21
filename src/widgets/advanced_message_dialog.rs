@@ -182,7 +182,7 @@ impl AdvancedMessageDialog {
                                             &mut buffer.start_iter(),
                                             &mut buffer.end_iter(),
                                             true,
-                                        )).map_err(|e| capnp::Error::failed(e.to_string()))?;
+                                        ))?;
                                         thisc.imp().subscription.get().unwrap()
                                             .publish_msg(msg).await
                                     };

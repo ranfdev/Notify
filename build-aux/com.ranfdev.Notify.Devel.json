@@ -38,17 +38,6 @@
     },
     "modules": [
         {
-            "name": "capnp",
-            "buildsystem": "cmake",
-            "sources": [
-                {
-                    "type": "archive",
-                    "url": "https://capnproto.org/capnproto-c++-0.10.4.tar.gz",
-                    "sha256": "981e7ef6dbe3ac745907e55a78870fbb491c5d23abd4ebc04e20ec235af4458c"
-                }
-            ]
-        },
-        {
           "name": "blueprint-compiler",
           "buildsystem": "meson",
           "cleanup": ["*"],

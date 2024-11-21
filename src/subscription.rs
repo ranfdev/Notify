@@ -1,8 +1,8 @@
 use std::cell::{Cell, OnceCell, RefCell};
+use std::future::Future;
 use std::rc::Rc;
 
 use adw::prelude::*;
-use capnp::capability::Promise;
 use glib::subclass::prelude::*;
 use glib::Properties;
 use gtk::{gio, glib};
@@ -137,9 +137,9 @@ impl Subscription {
         self._set_display_name(display_name.to_string());
     }
 
-    fn load(&self) -> Promise<(), capnp::Error> {
+    fn load(&self) -> impl Future<Output = anyhow::Result<()>> {
         let this = self.clone();
-        Promise::from_future(async move {
+        async move {
             let remote_subscription = this.imp().client.get().unwrap();
             let model = remote_subscription.model().await;
 
@@ -161,7 +161,7 @@ impl Subscription {
                 this.handle_event(ev);
             }
             Ok(())
-        })
+        }
     }
 
     fn handle_event(&self, ev: ListenerEvent) {
@@ -198,13 +198,13 @@ impl Subscription {
         self.notify_display_name();
     }
     #[instrument(skip_all)]
-    pub fn set_display_name(&self, value: String) -> Promise<(), anyhow::Error> {
+    pub fn set_display_name(&self, value: String) -> impl Future<Output = anyhow::Result<()>> {
         let this = self.clone();
-        Promise::from_future(async move {
+        async move {
             this._set_display_name(value);
             this.send_updated_info().await?;
             Ok(())
-        })
+        }
     }
 
     async fn send_updated_info(&self) -> anyhow::Result<()> {
@@ -240,14 +240,14 @@ impl Subscription {
         self.notify_unread_count();
     }
 
-    pub fn set_muted(&self, value: bool) -> Promise<(), anyhow::Error> {
+    pub fn set_muted(&self, value: bool) -> impl Future<Output = anyhow::Result<()>> {
         let this = self.clone();
-        Promise::from_future(async move {
+        async move {
             this.imp().muted.replace(value);
             this.notify_muted();
             this.send_updated_info().await?;
             Ok(())
-        })
+        }
     }
     pub async fn flag_all_as_read(&self) -> anyhow::Result<()> {
         let imp = self.imp();
