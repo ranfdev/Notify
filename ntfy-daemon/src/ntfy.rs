@@ -1,3 +1,4 @@
+use crate::actor_utils::send_command;
 use crate::models::NullNetworkMonitor;
 use crate::models::NullNotifier;
 use anyhow::{anyhow, Context};
@@ -36,40 +37,39 @@ pub fn build_client() -> anyhow::Result<reqwest::Client> {
 
 // Message types for the actor
 #[derive()]
-pub enum NtfyMessage {
+pub enum NtfyCommand {
     Subscribe {
         server: String,
         topic: String,
-        respond_to: oneshot::Sender<Result<SubscriptionHandle, Vec<anyhow::Error>>>,
+        resp_tx: oneshot::Sender<Result<SubscriptionHandle, anyhow::Error>>,
     },
     Unsubscribe {
         server: String,
         topic: String,
-        respond_to: oneshot::Sender<anyhow::Result<()>>,
+        resp_tx: oneshot::Sender<anyhow::Result<()>>,
     },
     RefreshAll {
-        respond_to: oneshot::Sender<anyhow::Result<()>>,
+        resp_tx: oneshot::Sender<anyhow::Result<()>>,
     },
     ListSubscriptions {
-        respond_to: oneshot::Sender<anyhow::Result<Vec<SubscriptionHandle>>>,
+        resp_tx: oneshot::Sender<anyhow::Result<Vec<SubscriptionHandle>>>,
     },
     ListAccounts {
-        respond_to: oneshot::Sender<anyhow::Result<Vec<Account>>>,
+        resp_tx: oneshot::Sender<anyhow::Result<Vec<Account>>>,
     },
     WatchSubscribed {
-        respond_to: oneshot::Sender<anyhow::Result<()>>,
+        resp_tx: oneshot::Sender<anyhow::Result<()>>,
     },
     AddAccount {
         server: String,
         username: String,
         password: String,
-        respond_to: oneshot::Sender<anyhow::Result<()>>,
+        resp_tx: oneshot::Sender<anyhow::Result<()>>,
     },
     RemoveAccount {
         server: String,
-        respond_to: oneshot::Sender<anyhow::Result<()>>,
+        resp_tx: oneshot::Sender<anyhow::Result<()>>,
     },
-    Shutdown,
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -81,12 +81,12 @@ pub struct WatchKey {
 pub struct NtfyActor {
     listener_handles: Arc<RwLock<HashMap<WatchKey, SubscriptionHandle>>>,
     env: SharedEnv,
-    command_rx: mpsc::Receiver<NtfyMessage>,
+    command_rx: mpsc::Receiver<NtfyCommand>,
 }
 
 #[derive(Clone)]
 pub struct NtfyHandle {
-    command_tx: mpsc::Sender<NtfyMessage>,
+    command_tx: mpsc::Sender<NtfyCommand>,
 }
 
 impl NtfyActor {
@@ -108,19 +108,15 @@ impl NtfyActor {
         &self,
         server: String,
         topic: String,
-    ) -> Result<SubscriptionHandle, Vec<anyhow::Error>> {
+    ) -> Result<SubscriptionHandle, anyhow::Error> {
         let subscription = models::Subscription::builder(topic.clone())
             .server(server.clone())
-            .build()
-            .map_err(|e| e.into_iter().map(|e| anyhow!(e)).collect::<Vec<_>>())?;
+            .build()?;
 
         let mut db = self.env.db.clone();
-        db.insert_subscription(subscription.clone())
-            .map_err(|e| vec![anyhow!(e)])?;
+        db.insert_subscription(subscription.clone())?;
 
-        self.listen(subscription)
-            .await
-            .map_err(|e| vec![anyhow!(e)])
+        self.listen(subscription).await
     }
 
     async fn handle_unsubscribe(&mut self, server: String, topic: String) -> anyhow::Result<()> {
@@ -141,25 +137,25 @@ impl NtfyActor {
     pub async fn run(&mut self) {
         while let Some(msg) = self.command_rx.recv().await {
             match msg {
-                NtfyMessage::Subscribe {
+                NtfyCommand::Subscribe {
                     server,
                     topic,
-                    respond_to,
+                    resp_tx,
                 } => {
                     let result = self.handle_subscribe(server, topic).await;
-                    let _ = respond_to.send(result);
+                    let _ = resp_tx.send(result);
                 }
 
-                NtfyMessage::Unsubscribe {
+                NtfyCommand::Unsubscribe {
                     server,
                     topic,
-                    respond_to,
+                    resp_tx,
                 } => {
                     let result = self.handle_unsubscribe(server, topic).await;
-                    let _ = respond_to.send(result);
+                    let _ = resp_tx.send(result);
                 }
 
-                NtfyMessage::RefreshAll { respond_to } => {
+                NtfyCommand::RefreshAll { resp_tx } => {
                     let mut res = Ok(());
                     for sub in self.listener_handles.read().await.values() {
                         res = sub.restart().await;
@@ -167,10 +163,10 @@ impl NtfyActor {
                             break;
                         }
                     }
-                    let _ = respond_to.send(res);
+                    let _ = resp_tx.send(res);
                 }
 
-                NtfyMessage::ListSubscriptions { respond_to } => {
+                NtfyCommand::ListSubscriptions { resp_tx } => {
                     let subs = self
                         .listener_handles
                         .read()
@@ -178,10 +174,10 @@ impl NtfyActor {
                         .values()
                         .cloned()
                         .collect();
-                    let _ = respond_to.send(Ok(subs));
+                    let _ = resp_tx.send(Ok(subs));
                 }
 
-                NtfyMessage::ListAccounts { respond_to } => {
+                NtfyCommand::ListAccounts { resp_tx } => {
                     let accounts = self
                         .env
                         .credentials
@@ -192,34 +188,32 @@ impl NtfyActor {
                             username: credential.username,
                         })
                         .collect();
-                    let _ = respond_to.send(Ok(accounts));
+                    let _ = resp_tx.send(Ok(accounts));
                 }
 
-                NtfyMessage::WatchSubscribed { respond_to } => {
+                NtfyCommand::WatchSubscribed { resp_tx } => {
                     let result = self.handle_watch_subscribed().await;
-                    let _ = respond_to.send(result);
+                    let _ = resp_tx.send(result);
                 }
 
-                NtfyMessage::AddAccount {
+                NtfyCommand::AddAccount {
                     server,
                     username,
                     password,
-                    respond_to,
+                    resp_tx,
                 } => {
                     let result = self
                         .env
                         .credentials
                         .insert(&server, &username, &password)
                         .await;
-                    let _ = respond_to.send(result);
+                    let _ = resp_tx.send(result);
                 }
 
-                NtfyMessage::RemoveAccount { server, respond_to } => {
+                NtfyCommand::RemoveAccount { server, resp_tx } => {
                     let result = self.env.credentials.delete(&server).await;
-                    let _ = respond_to.send(result);
+                    let _ = resp_tx.send(result);
                 }
-
-                NtfyMessage::Shutdown => break,
             }
         }
     }
@@ -274,73 +268,36 @@ impl NtfyHandle {
         &self,
         server: &str,
         topic: &str,
-    ) -> Result<SubscriptionHandle, Vec<anyhow::Error>> {
-        let (tx, rx) = oneshot::channel();
-        self.command_tx
-            .send(NtfyMessage::Subscribe {
-                server: server.to_string(),
-                topic: topic.to_string(),
-                respond_to: tx,
-            })
-            .await
-            .map_err(|_| vec![anyhow!("Actor mailbox error")])?;
-
-        rx.await
-            .map_err(|_| vec![anyhow!("Actor response error")])?
+    ) -> Result<SubscriptionHandle, anyhow::Error> {
+        send_command!(self, |resp_tx| NtfyCommand::Subscribe {
+            server: server.to_string(),
+            topic: topic.to_string(),
+            resp_tx,
+        })
     }
 
     pub async fn unsubscribe(&self, server: &str, topic: &str) -> anyhow::Result<()> {
-        let (tx, rx) = oneshot::channel();
-        self.command_tx
-            .send(NtfyMessage::Unsubscribe {
-                server: server.to_string(),
-                topic: topic.to_string(),
-                respond_to: tx,
-            })
-            .await
-            .map_err(|_| anyhow!("Actor mailbox error"))?;
-
-        rx.await.map_err(|_| anyhow!("Actor response error"))?
+        send_command!(self, |resp_tx| NtfyCommand::Unsubscribe {
+            server: server.to_string(),
+            topic: topic.to_string(),
+            resp_tx,
+        })
     }
 
     pub async fn refresh_all(&self) -> anyhow::Result<()> {
-        let (tx, rx) = oneshot::channel();
-        self.command_tx
-            .send(NtfyMessage::RefreshAll { respond_to: tx })
-            .await
-            .map_err(|_| anyhow!("Actor mailbox error"))?;
-
-        rx.await.map_err(|_| anyhow!("Actor response error"))?
+        send_command!(self, |resp_tx| NtfyCommand::RefreshAll { resp_tx })
     }
 
     pub async fn list_subscriptions(&self) -> anyhow::Result<Vec<SubscriptionHandle>> {
-        let (tx, rx) = oneshot::channel();
-        self.command_tx
-            .send(NtfyMessage::ListSubscriptions { respond_to: tx })
-            .await
-            .map_err(|_| anyhow!("Actor mailbox error"))?;
-
-        rx.await.map_err(|_| anyhow!("Actor response error"))?
+        send_command!(self, |resp_tx| NtfyCommand::ListSubscriptions { resp_tx })
     }
 
     pub async fn list_accounts(&self) -> anyhow::Result<Vec<Account>> {
-        let (tx, rx) = oneshot::channel();
-        self.command_tx
-            .send(NtfyMessage::ListAccounts { respond_to: tx })
-            .await
-            .map_err(|_| anyhow!("Actor mailbox error"))?;
-
-        rx.await.map_err(|_| anyhow!("Actor response error"))?
+        send_command!(self, |resp_tx| NtfyCommand::ListAccounts { resp_tx })
     }
 
     pub async fn watch_subscribed(&self) -> anyhow::Result<()> {
-        let (tx, rx) = oneshot::channel();
-        self.command_tx
-            .send(NtfyMessage::WatchSubscribed { respond_to: tx })
-            .await
-            .map_err(|_| anyhow!("Actor mailbox error"))?;
-
-        rx.await.map_err(|_| anyhow!("Actor response error"))?
+        send_command!(self, |resp_tx| NtfyCommand::WatchSubscribed { resp_tx })
     }
 
     pub async fn add_account(
@@ -349,31 +306,19 @@ impl NtfyHandle {
         username: &str,
         password: &str,
     ) -> anyhow::Result<()> {
-        let (tx, rx) = oneshot::channel();
-        self.command_tx
-            .send(NtfyMessage::AddAccount {
-                server: server.to_string(),
-                username: username.to_string(),
-                password: password.to_string(),
-                respond_to: tx,
-            })
-            .await
-            .map_err(|_| anyhow!("Actor mailbox error"))?;
-
-        rx.await.map_err(|_| anyhow!("Actor response error"))?
+        send_command!(self, |resp_tx| NtfyCommand::AddAccount {
+            server: server.to_string(),
+            username: username.to_string(),
+            password: password.to_string(),
+            resp_tx,
+        })
     }
 
     pub async fn remove_account(&self, server: &str) -> anyhow::Result<()> {
-        let (tx, rx) = oneshot::channel();
-        self.command_tx
-            .send(NtfyMessage::RemoveAccount {
-                server: server.to_string(),
-                respond_to: tx,
-            })
-            .await
-            .map_err(|_| anyhow!("Actor mailbox error"))?;
-
-        rx.await.map_err(|_| anyhow!("Actor response error"))?
+        send_command!(self, |resp_tx| NtfyCommand::RemoveAccount {
+            server: server.to_string(),
+            resp_tx,
+        })
     }
 }
 
@@ -438,7 +383,7 @@ pub fn start(
 mod tests {
     use std::time::Duration;
 
-    use models::Message;
+    use models::{OutgoingMessage, ReceivedMessage};
     use tokio::time::sleep;
 
     use crate::ListenerEvent;
@@ -466,7 +411,7 @@ mod tests {
             let subscription_handle = handle.subscribe(server, topic).await.unwrap();
 
             // Publish a message
-            let message = serde_json::to_string(&Message {
+            let message = serde_json::to_string(&OutgoingMessage {
                 topic: topic.to_string(),
                 ..Default::default()
             })

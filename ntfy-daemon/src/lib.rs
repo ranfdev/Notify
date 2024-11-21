@@ -1,3 +1,4 @@
+mod actor_utils;
 pub mod credentials;
 mod http_client;
 mod listener;
@@ -31,6 +32,8 @@ pub enum Error {
     InvalidTopic(String),
     #[error("invalid server base url {0:?}")]
     InvalidServer(#[from] url::ParseError),
+    #[error("multiple errors in subscription model: {0:?}")]
+    InvalidSubscription(Vec<Error>),
     #[error("duplicate message")]
     DuplicateMessage,
     #[error("can't parse the minimum set of required fields from the message {0}")]

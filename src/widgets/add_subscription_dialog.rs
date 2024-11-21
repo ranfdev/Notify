@@ -166,7 +166,7 @@ impl AddSubscriptionDialog {
         obj.set_content_width(480);
         obj.set_child(Some(&toolbar_view));
     }
-    pub fn subscription(&self) -> Result<models::Subscription, Vec<ntfy_daemon::Error>> {
+    pub fn subscription(&self) -> Result<models::Subscription, ntfy_daemon::Error> {
         let w = { self.imp().widgets.borrow().clone() };
         let mut sub = models::Subscription::builder(w.topic_entry.text().to_string());
         if w.server_expander.enables_expansion() {
@@ -183,7 +183,7 @@ impl AddSubscriptionDialog {
         w.topic_entry.remove_css_class("error");
         w.sub_btn.set_sensitive(true);
 
-        if let Err(errs) = sub {
+        if let Err(ntfy_daemon::Error::InvalidSubscription(errs)) = sub {
             w.sub_btn.set_sensitive(false);
             for e in errs {
                 match e {

@@ -36,7 +36,7 @@ pub enum ServerEvent {
         topic: String,
     },
     #[serde(rename = "message")]
-    Message(models::Message),
+    Message(models::ReceivedMessage),
     #[serde(rename = "keepalive")]
     KeepAlive {
         id: String,
@@ -48,7 +48,7 @@ pub enum ServerEvent {
 
 #[derive(Debug, Clone)]
 pub enum ListenerEvent {
-    Message(models::Message),
+    Message(models::ReceivedMessage),
     ConnectionStateChanged(ConnectionState),
 }
 
@@ -281,7 +281,7 @@ impl ListenerHandle {
     }
 
     // the response will be sent as an event in self.events
-    pub async fn request_state(&self) -> ConnectionState {
+    pub async fn state(&self) -> ConnectionState {
         let (tx, rx) = oneshot::channel();
         self.commands
             .send(ListenerCommand::GetState(tx))
@@ -299,20 +299,6 @@ mod tests {
     use tokio_stream::wrappers::WatchStream;
 
     use super::*;
-
-    // takes a list of pattern matches. It recvs events and then matches them
-    // against the macro parameters
-    macro_rules! assert_event_matches {
-        ($listener:expr, $( $pattern:pat_param ),+ $(,)?) => {
-            $(
-                $listener.events.changed().await.unwrap();
-                let event = $listener.events.borrow().clone();
-
-                panic!("{:?}", &event);
-                assert!(matches!(event, $pattern));
-            )+
-        };
-    }
 
     #[tokio::test]
     async fn test_listener_reconnects_on_http_status_500() {

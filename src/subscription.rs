@@ -227,12 +227,12 @@ impl Subscription {
             .await?;
         Ok(())
     }
-    fn last_message(list: &gio::ListStore) -> Option<models::Message> {
+    fn last_message(list: &gio::ListStore) -> Option<models::ReceivedMessage> {
         let n = list.n_items();
         let last = list
             .item(n.checked_sub(1)?)
             .and_downcast::<glib::BoxedAnyObject>()?;
-        let last = last.borrow::<models::Message>();
+        let last = last.borrow::<models::ReceivedMessage>();
         Some(last.clone())
     }
     fn update_unread_count(&self) {
@@ -275,7 +275,7 @@ impl Subscription {
 
         Ok(())
     }
-    pub async fn publish_msg(&self, mut msg: models::Message) -> anyhow::Result<()> {
+    pub async fn publish_msg(&self, mut msg: models::OutgoingMessage) -> anyhow::Result<()> {
         let imp = self.imp();
         let json = {
             msg.topic = self.topic();

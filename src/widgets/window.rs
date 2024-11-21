@@ -226,9 +226,9 @@ impl NotifyWindow {
         entry.error_boundary().spawn(async move {
             this.selected_subscription()
                 .unwrap()
-                .publish_msg(models::Message {
+                .publish_msg(models::OutgoingMessage {
                     message: Some(entry.text().as_str().to_string()),
-                    ..models::Message::default()
+                    ..models::OutgoingMessage::default()
                 })
                 .await?;
             Ok(())
@@ -266,13 +266,7 @@ impl NotifyWindow {
     fn add_subscription(&self, sub: models::Subscription) {
         let this = self.clone();
         self.error_boundary().spawn(async move {
-            let sub = this
-                .notifier()
-                .subscribe(&sub.server, &sub.topic)
-                .await
-                .map_err(|err| {
-                    anyhow::anyhow!(err.into_iter().map(|x| x.to_string()).collect::<String>())
-                })?;
+            let sub = this.notifier().subscribe(&sub.server, &sub.topic).await?;
             let imp = this.imp();
 
             // Subscription::new will use the pipelined client to retrieve info about the subscription
@@ -371,7 +365,7 @@ impl NotifyWindow {
             imp.message_list
                 .bind_model(Some(&sub.imp().messages), move |obj| {
                     let b = obj.downcast_ref::<glib::BoxedAnyObject>().unwrap();
-                    let msg = b.borrow::<models::Message>();
+                    let msg = b.borrow::<models::ReceivedMessage>();
 
                     MessageRow::new(msg.clone()).upcast()
                 });

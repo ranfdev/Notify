@@ -27,7 +27,7 @@ pub fn validate_topic(topic: &str) -> Result<&str, Error> {
 }
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
-pub struct Message {
+pub struct ReceivedMessage {
     pub id: String,
     pub topic: String,
     pub expires: Option<u64>,
@@ -59,7 +59,7 @@ pub struct Message {
     pub actions: Vec<Action>,
 }
 
-impl Message {
+impl ReceivedMessage {
     fn extend_with_emojis(&self, text: &mut String) {
         // Add emojis
         for t in &self.tags {
@@ -105,6 +105,37 @@ impl Message {
             out
         })
     }
+}
+
+#[derive(Default, Clone, Debug, Serialize, Deserialize)]
+pub struct OutgoingMessage {
+    pub topic: String,
+    pub message: Option<String>,
+    #[serde(default = "Default::default")]
+    pub time: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub priority: Option<i8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    pub attachment: Option<Attachment>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub filename: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delay: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub email: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub call: Option<String>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub actions: Vec<Action>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -167,7 +198,7 @@ impl Subscription {
             .push("auth");
         Ok(url)
     }
-    pub fn validate(self) -> Result<Self, Vec<crate::Error>> {
+    pub fn validate(self) -> Result<Self, crate::Error> {
         let mut errs = vec![];
         if let Err(e) = validate_topic(&self.topic) {
             errs.push(e);
@@ -176,7 +207,7 @@ impl Subscription {
             errs.push(e);
         };
         if !errs.is_empty() {
-            return Err(errs);
+            return Err(Error::InvalidSubscription(errs));
         }
         Ok(self)
     }
@@ -239,7 +270,7 @@ impl SubscriptionBuilder {
         self
     }
 
-    pub fn build(self) -> Result<Subscription, Vec<Error>> {
+    pub fn build(self) -> Result<Subscription, Error> {
         let res = Subscription {
             server: self.server,
             topic: self.topic,
