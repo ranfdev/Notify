@@ -6,16 +6,25 @@
   <!-- Insert your license of choice here -->
   <project_license>GPL-3.0-or-later</project_license>
   <name>Notify</name>
-  <summary>Receive notifications from ntfy.sh.</summary>
+  <summary>Receive notifications from ntfy.sh</summary>
   <description>
-    <p>Versatile GTK4 client designed to seamlessly interface with the ntfy.sh notification service</p>
+    <p>A desktop client for ntfy.</p>
+    <ul>
+    <li>Receive and send notifications with ntfy.sh or a self hosted ntfy server</li>
+    <li>View past notifications<li>
+    <li>Runs automatically at startup and receives notifications in the background</li>
+    </ul>
+    <p>ntfy allows you to send notifications to your phone or desktop via scripts from any computer and/or using a REST API.</p>
+    <p>You can set up notifications to monitor disk space, ssh logins, weather forecasts, or any number of creative scenarios.</p>
   </description>
   <categories>
     <category>Network</category>
     <category>Utility</category>
-    <category>GTK</category>
-    <category>GNOME</category>
   </categories>
+  <keywords>
+    <keyword translate="no">GTK</keyword>
+    <keyword translate="no">GNOME</keyword>
+  </keywords>
   <screenshots>
     <screenshot type="default">
       <image>https://raw.githubusercontent.com/ranfdev/Notify/main/data/screenshots/1.png</image>
