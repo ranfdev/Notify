@@ -11,7 +11,7 @@
     <p>A desktop client for ntfy.</p>
     <ul>
     <li>Receive and send notifications with ntfy.sh or a self hosted ntfy server</li>
-    <li>View past notifications<li>
+    <li>View past notifications</li>
     <li>Runs automatically at startup and receives notifications in the background</li>
     </ul>
     <p>ntfy allows you to send notifications to your phone or desktop via scripts from any computer and/or using a REST API.</p>
