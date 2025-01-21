@@ -34,12 +34,12 @@ glib::wrapper! {
 }
 
 impl MessageRow {
-    pub fn new(msg: models::Message) -> Self {
+    pub fn new(msg: models::ReceivedMessage) -> Self {
         let this: Self = glib::Object::new();
         this.build_ui(msg);
         this
     }
-    fn build_ui(&self, msg: models::Message) {
+    fn build_ui(&self, msg: models::ReceivedMessage) {
         self.set_margin_top(8);
         self.set_margin_bottom(8);
         self.set_margin_start(8);

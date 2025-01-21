@@ -3,15 +3,15 @@ use std::cell::OnceCell;
 
 use adw::prelude::*;
 use adw::subclass::prelude::*;
-use futures::prelude::*;
 use gtk::{gio, glib};
 use ntfy_daemon::models;
-use ntfy_daemon::ntfy_capnp::{system_notifier, Status};
+use ntfy_daemon::NtfyHandle;
 use tracing::warn;
 
 use crate::application::NotifyApplication;
 use crate::config::{APP_ID, PROFILE};
 use crate::error::*;
+use crate::subscription::Status;
 use crate::subscription::Subscription;
 use crate::widgets::*;
 
@@ -52,7 +52,7 @@ mod imp {
         pub send_btn: TemplateChild<gtk::Button>,
         #[template_child]
         pub code_btn: TemplateChild<gtk::Button>,
-        pub notifier: OnceCell<system_notifier::Client>,
+        pub notifier: OnceCell<NtfyHandle>,
         pub conn: OnceCell<gio::SocketConnection>,
         pub settings: gio::Settings,
         pub banner_binding: Cell<Option<(Subscription, glib::SignalHandlerId)>>,
@@ -138,7 +138,8 @@ mod imp {
             });
             klass.install_action("win.clear-notifications", None, |this, _, _| {
                 this.selected_subscription().map(|sub| {
-                    this.error_boundary().spawn(sub.clear_notifications());
+                    this.error_boundary()
+                        .spawn(async move { sub.clear_notifications().await });
                 });
             });
             //klass.bind_template_instance_callbacks();
@@ -190,7 +191,7 @@ glib::wrapper! {
 }
 
 impl NotifyWindow {
-    pub fn new(app: &NotifyApplication, notifier: system_notifier::Client) -> Self {
+    pub fn new(app: &NotifyApplication, notifier: NtfyHandle) -> Self {
         let obj: Self = glib::Object::builder().property("application", app).build();
 
         if let Err(_) = obj.imp().notifier.set(notifier) {
@@ -211,24 +212,25 @@ impl NotifyWindow {
     fn connect_entry_and_send_btn(&self) {
         let imp = self.imp();
         let this = self.clone();
-        let entry = imp.entry.clone();
-        let publish = move || {
-            let p = this
-                .selected_subscription()
-                .unwrap()
-                .publish_msg(models::Message {
-                    message: Some(entry.text().as_str().to_string()),
-                    ..models::Message::default()
-                });
 
-            entry.error_boundary().spawn(async move {
-                p.await?;
-                Ok(())
-            });
-        };
-        let publishc = publish.clone();
-        imp.entry.connect_activate(move |_| publishc());
-        imp.send_btn.connect_clicked(move |_| publish());
+        imp.entry.connect_activate(move |_| this.publish_msg());
+        let this = self.clone();
+        imp.send_btn.connect_clicked(move |_| this.publish_msg());
+    }
+    fn publish_msg(&self) {
+        let entry = self.imp().entry.clone();
+        let this = self.clone();
+
+        entry.error_boundary().spawn(async move {
+            this.selected_subscription()
+                .unwrap()
+                .publish_msg(models::OutgoingMessage {
+                    message: Some(entry.text().as_str().to_string()),
+                    ..models::OutgoingMessage::default()
+                })
+                .await?;
+            Ok(())
+        });
     }
     fn connect_code_btn(&self) {
         let imp = self.imp();
@@ -260,19 +262,14 @@ impl NotifyWindow {
     }
 
     fn add_subscription(&self, sub: models::Subscription) {
-        let mut req = self.notifier().subscribe_request();
-
-        req.get().set_server(sub.server.as_str().into());
-        req.get().set_topic(sub.topic.as_str().into());
-        let res = req.send();
         let this = self.clone();
         self.error_boundary().spawn(async move {
+            let sub = this.notifier().subscribe(&sub.server, &sub.topic).await?;
             let imp = this.imp();
 
             // Subscription::new will use the pipelined client to retrieve info about the subscription
-            let subscription = Subscription::new(res.pipeline.get_subscription());
+            let subscription = Subscription::new(sub);
             // We want to still check if there were any errors adding the subscription.
-            res.promise.await?;
 
             imp.subscription_list_model.append(&subscription);
             let i = imp.subscription_list_model.n_items() - 1;
@@ -283,26 +280,22 @@ impl NotifyWindow {
     }
 
     fn unsubscribe(&self) {
-        let mut req = self.notifier().unsubscribe_request();
         let sub = self.selected_subscription().unwrap();
 
-        req.get().set_server(sub.server().as_str().into());
-        req.get().set_topic(sub.topic().as_str().into());
-
-        let res = req.send();
         let this = self.clone();
-
         self.error_boundary().spawn(async move {
-            let imp = this.imp();
-            res.promise.await?;
+            this.notifier()
+                .unsubscribe(sub.server().as_str(), sub.topic().as_str())
+                .await?;
 
+            let imp = this.imp();
             if let Some(i) = imp.subscription_list_model.find(&sub) {
                 imp.subscription_list_model.remove(i);
             }
             Ok(())
         });
     }
-    fn notifier(&self) -> &system_notifier::Client {
+    fn notifier(&self) -> &NtfyHandle {
         self.imp().notifier.get().unwrap()
     }
     fn selected_subscription(&self) -> Option<Subscription> {
@@ -328,14 +321,13 @@ impl NotifyWindow {
         });
 
         let this = self.clone();
-        let req = self.notifier().list_subscriptions_request();
-        let res = req.send();
         self.error_boundary().spawn(async move {
-            let list = res.promise.await?;
-            let list = list.get()?.get_list()?;
-            let imp = this.imp();
+            glib::timeout_future_seconds(1).await;
+            let list = this.notifier().list_subscriptions().await?;
             for sub in list {
-                imp.subscription_list_model.append(&Subscription::new(sub?));
+                this.imp()
+                    .subscription_list_model
+                    .append(&Subscription::new(sub));
             }
             Ok(())
         });
@@ -371,7 +363,7 @@ impl NotifyWindow {
             imp.message_list
                 .bind_model(Some(&sub.imp().messages), move |obj| {
                     let b = obj.downcast_ref::<glib::BoxedAnyObject>().unwrap();
-                    let msg = b.borrow::<models::Message>();
+                    let msg = b.borrow::<models::ReceivedMessage>();
 
                     MessageRow::new(msg.clone()).upcast()
                 });
@@ -402,7 +394,7 @@ impl NotifyWindow {
         {
             self.selected_subscription().map(|sub| {
                 self.error_boundary()
-                    .spawn(sub.flag_all_as_read().map_err(|e| e.into()));
+                    .spawn(async move { sub.flag_all_as_read().await });
             });
         }
     }

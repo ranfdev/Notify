@@ -1,3 +1,4 @@
+use std::sync::{Arc, RwLock};
 use std::{cell::RefCell, rc::Rc};
 
 use rusqlite::{params, Connection, Result};
@@ -8,16 +9,16 @@ use crate::Error;
 
 #[derive(Clone, Debug)]
 pub struct Db {
-    conn: Rc<RefCell<Connection>>,
+    conn: Arc<RwLock<Connection>>,
 }
 
 impl Db {
     pub fn connect(path: &str) -> Result<Self> {
         let mut this = Self {
-            conn: Rc::new(RefCell::new(Connection::open(path)?)),
+            conn: Arc::new(RwLock::new(Connection::open(path)?)),
         };
         {
-            this.conn.borrow().execute_batch(
+            this.conn.read().unwrap().execute_batch(
                 "PRAGMA foreign_keys = ON;
         PRAGMA journal_mode = wal;",
             )?;
@@ -27,12 +28,13 @@ impl Db {
     }
     fn migrate(&mut self) -> Result<()> {
         self.conn
-            .borrow()
+            .read()
+            .unwrap()
             .execute_batch(include_str!("./migrations/00.sql"))?;
         Ok(())
     }
     fn get_or_insert_server(&mut self, server: &str) -> Result<i64> {
-        let mut conn = self.conn.borrow_mut();
+        let mut conn = self.conn.write().unwrap();
         let tx = conn.transaction()?;
         let mut res = tx.query_row(
             "SELECT id
@@ -56,7 +58,7 @@ impl Db {
     }
     pub fn insert_message(&mut self, server: &str, json_data: &str) -> Result<(), Error> {
         let server_id = self.get_or_insert_server(server)?;
-        let res = self.conn.borrow().execute(
+        let res = self.conn.read().unwrap().execute(
             "INSERT INTO message (server, data) VALUES (?1, ?2)",
             params![server_id, json_data],
         );
@@ -76,7 +78,7 @@ impl Db {
         topic: &str,
         since: u64,
     ) -> Result<Vec<String>, rusqlite::Error> {
-        let conn = self.conn.borrow();
+        let conn = self.conn.read().unwrap();
         let mut stmt = conn.prepare(
             "
             SELECT data
@@ -94,7 +96,7 @@ impl Db {
     }
     pub fn insert_subscription(&mut self, sub: models::Subscription) -> Result<(), Error> {
         let server_id = self.get_or_insert_server(&sub.server)?;
-        self.conn.borrow().execute(
+        self.conn.read().unwrap().execute(
             "INSERT INTO subscription (server, topic, display_name, reserved, muted, archived) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             params![
                 server_id,
@@ -109,7 +111,7 @@ impl Db {
     }
     pub fn remove_subscription(&mut self, server: &str, topic: &str) -> Result<(), Error> {
         let server_id = self.get_or_insert_server(server)?;
-        let res = self.conn.borrow().execute(
+        let res = self.conn.read().unwrap().execute(
             "DELETE FROM subscription
             WHERE server = ?1 AND topic = ?2",
             params![server_id, topic],
@@ -120,7 +122,7 @@ impl Db {
         Ok(())
     }
     pub fn list_subscriptions(&mut self) -> Result<Vec<models::Subscription>, Error> {
-        let conn = self.conn.borrow();
+        let conn = self.conn.read().unwrap();
         let mut stmt = conn.prepare(
             "SELECT server.endpoint, sub.topic, sub.display_name, sub.reserved, sub.muted, sub.archived, sub.symbolic_icon, sub.read_until
             FROM subscription sub
@@ -146,7 +148,7 @@ impl Db {
 
     pub fn update_subscription(&mut self, sub: models::Subscription) -> Result<(), Error> {
         let server_id = self.get_or_insert_server(&sub.server)?;
-        let res = self.conn.borrow().execute(
+        let res = self.conn.read().unwrap().execute(
             "UPDATE subscription
             SET display_name = ?1, reserved = ?2, muted = ?3, archived = ?4, read_until = ?5
             WHERE server = ?6 AND topic = ?7",
@@ -174,7 +176,7 @@ impl Db {
         value: u64,
     ) -> Result<(), Error> {
         let server_id = self.get_or_insert_server(server).unwrap();
-        let conn = self.conn.borrow();
+        let conn = self.conn.read().unwrap();
         let res = conn.execute(
             "UPDATE subscription
             SET read_until = ?3
@@ -189,7 +191,7 @@ impl Db {
     }
     pub fn delete_messages(&mut self, server: &str, topic: &str) -> Result<(), Error> {
         let server_id = self.get_or_insert_server(server).unwrap();
-        let conn = self.conn.borrow();
+        let conn = self.conn.read().unwrap();
         let res = conn.execute(
             "DELETE FROM message
             WHERE topic = ?2 AND server = ?1

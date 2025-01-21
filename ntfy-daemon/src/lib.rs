@@ -1,21 +1,28 @@
+mod actor_utils;
 pub mod credentials;
+mod http_client;
+mod listener;
 pub mod message_repo;
 pub mod models;
+mod ntfy;
+mod output_tracker;
 pub mod retry;
-pub mod system_client;
-pub mod topic_listener;
-pub mod ntfy_capnp {
-    include!(concat!(env!("OUT_DIR"), "/src/ntfy_capnp.rs"));
-}
+mod subscription;
 
+pub use listener::*;
+pub use ntfy::start;
+pub use ntfy::NtfyHandle;
 use std::sync::Arc;
+pub use subscription::SubscriptionHandle;
+
+use http_client::HttpClient;
 
 #[derive(Clone)]
 pub struct SharedEnv {
     db: message_repo::Db,
-    proxy: Arc<dyn models::NotificationProxy>,
-    http: reqwest::Client,
-    network: Arc<dyn models::NetworkMonitorProxy>,
+    notifier: Arc<dyn models::NotificationProxy>,
+    http_client: HttpClient,
+    network_monitor: Arc<dyn models::NetworkMonitorProxy>,
     credentials: credentials::Credentials,
 }
 
@@ -25,6 +32,8 @@ pub enum Error {
     InvalidTopic(String),
     #[error("invalid server base url {0:?}")]
     InvalidServer(#[from] url::ParseError),
+    #[error("multiple errors in subscription model: {0:?}")]
+    InvalidSubscription(Vec<Error>),
     #[error("duplicate message")]
     DuplicateMessage,
     #[error("can't parse the minimum set of required fields from the message {0}")]
@@ -35,10 +44,4 @@ pub enum Error {
     Db(#[from] rusqlite::Error),
     #[error("subscription not found while {0}")]
     SubscriptionNotFound(String),
-}
-
-impl From<Error> for capnp::Error {
-    fn from(value: Error) -> Self {
-        capnp::Error::failed(format!("{:?}", value))
-    }
 }

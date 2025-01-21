@@ -1,19 +1,13 @@
 use std::cell::Cell;
-use std::path::Path;
-use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 
 use adw::prelude::*;
 use adw::subclass::prelude::*;
-use capnp_rpc::{rpc_twoparty_capnp, twoparty, RpcSystem};
 use futures::stream::Stream;
-use futures::AsyncReadExt;
-use gio::SocketClient;
-use gio::UnixSocketAddress;
 use gtk::{gdk, gio, glib};
 use ntfy_daemon::models;
-use ntfy_daemon::ntfy_capnp::system_notifier;
+use ntfy_daemon::NtfyHandle;
 use tracing::{debug, error, info, warn};
 
 use crate::config::{APP_ID, PKGDATADIR, PROFILE, VERSION};
@@ -30,8 +24,8 @@ mod imp {
     #[derive(Default)]
     pub struct NotifyApplication {
         pub window: RefCell<WeakRef<NotifyWindow>>,
-        pub socket_path: RefCell<PathBuf>,
         pub hold_guard: OnceCell<gio::ApplicationHoldGuard>,
+        pub ntfy: OnceCell<NtfyHandle>,
     }
 
     #[glib::object_subclass]
@@ -58,8 +52,6 @@ mod imp {
             // Set icons for shell
             gtk::Window::set_default_icon_name(APP_ID);
 
-            let socket_path = glib::user_data_dir().join("com.ranfdev.Notify.socket");
-            self.socket_path.replace(socket_path);
             app.setup_css();
             app.setup_gactions();
             app.setup_accels();
@@ -71,7 +63,7 @@ mod imp {
             let app = self.obj();
 
             if self.hold_guard.get().is_none() {
-                app.ensure_rpc_running(&self.socket_path.borrow());
+                app.ensure_rpc_running();
             }
 
             glib::MainContext::default().spawn_local(async move {
@@ -108,7 +100,7 @@ impl NotifyApplication {
                 return;
             }
         }
-        self.build_window(&self.imp().socket_path.borrow());
+        self.build_window();
         self.main_window().present();
     }
 
@@ -253,7 +245,7 @@ impl NotifyApplication {
         Ok(())
     }
 
-    fn ensure_rpc_running(&self, socket_path: &Path) {
+    fn ensure_rpc_running(&self) {
         let dbpath = glib::user_data_dir().join("com.ranfdev.Notify.sqlite");
         info!(database_path = %dbpath.display());
 
@@ -317,42 +309,19 @@ impl NotifyApplication {
             }
         }
         let proxies = std::sync::Arc::new(Proxies { notification: s });
-        ntfy_daemon::system_client::start(
-            socket_path.to_owned(),
-            dbpath.to_str().unwrap(),
-            proxies.clone(),
-            proxies,
-        )
-        .unwrap();
+        let ntfy = ntfy_daemon::start(dbpath.to_str().unwrap(), proxies.clone(), proxies).unwrap();
+        self.imp()
+            .ntfy
+            .set(ntfy)
+            .or(Err(anyhow::anyhow!("failed setting ntfy")))
+            .unwrap();
         self.imp().hold_guard.set(self.hold()).unwrap();
     }
 
-    fn build_window(&self, socket_path: &Path) {
-        let address = UnixSocketAddress::new(socket_path);
-        let client = SocketClient::new();
-        let connection =
-            SocketClientExt::connect(&client, &address, gio::Cancellable::NONE).unwrap();
+    fn build_window(&self) {
+        let ntfy = self.imp().ntfy.get().unwrap();
 
-        let rw = connection.into_async_read_write().unwrap();
-        let (reader, writer) = rw.split();
-
-        let rpc_network = Box::new(twoparty::VatNetwork::new(
-            reader,
-            writer,
-            rpc_twoparty_capnp::Side::Client,
-            Default::default(),
-        ));
-        let mut rpc_system = RpcSystem::new(rpc_network, None);
-        let client: system_notifier::Client =
-            rpc_system.bootstrap(rpc_twoparty_capnp::Side::Server);
-
-        glib::MainContext::default().spawn_local(async move {
-            debug!("rpc_system started");
-            rpc_system.await.unwrap();
-            debug!("rpc_system stopped");
-        });
-
-        let window = NotifyWindow::new(self, client);
+        let window = NotifyWindow::new(self, ntfy.clone());
         *self.imp().window.borrow_mut() = window.downgrade();
     }
 }
