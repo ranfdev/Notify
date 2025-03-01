@@ -33,6 +33,7 @@ pkgdatadir = datadir / meson.project_name()
 iconsdir = datadir / 'icons'
 podir = meson.project_source_root() / 'po'
 gettext_package = meson.project_name()
+dbusdir = datadir / 'dbus-1' / 'services'
 
 if get_option('profile') == 'development'
   profile = 'Devel'

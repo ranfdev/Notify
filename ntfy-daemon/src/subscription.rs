@@ -262,7 +262,7 @@ impl SubscriptionActor {
                     actions: msg.actions.clone(),
                 };
 
-                info!(topic=?self.model.topic, "showing notification");
+                debug!(topic=?self.model.topic, "sending notification through proxy");
                 notifier.send(n).unwrap();
             } else {
                 debug!(topic=?self.model.topic, "notification muted, skipping");

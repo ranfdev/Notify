@@ -55,12 +55,6 @@ mod imp {
             app.setup_css();
             app.setup_gactions();
             app.setup_accels();
-        }
-        fn command_line(&self, command_line: &gio::ApplicationCommandLine) -> glib::ExitCode {
-            debug!("AdwApplication<NotifyApplication>::command_line");
-            let arguments = command_line.arguments();
-            let is_daemon = arguments.get(1).map(|x| x.to_str()) == Some(Some("--daemon"));
-            let app = self.obj();
 
             if self.hold_guard.get().is_none() {
                 app.ensure_rpc_running();
@@ -71,14 +65,6 @@ mod imp {
                     warn!(error = %e, "couldn't request running in background from portal");
                 }
             });
-
-            if is_daemon {
-                return glib::ExitCode::SUCCESS;
-            }
-
-            app.ensure_window_present();
-
-            glib::ExitCode::SUCCESS
         }
     }
 
@@ -93,7 +79,13 @@ glib::wrapper! {
 }
 
 impl NotifyApplication {
-    fn ensure_window_present(&self) {
+    pub fn new() -> Self {
+        glib::Object::builder()
+            .property("application-id", APP_ID)
+            .property("resource-base-path", "/com/ranfdev/Notify/")
+            .build()
+    }
+    pub fn ensure_window_present(&self) {
         if let Some(window) = { self.imp().window.borrow().upgrade() } {
             if window.is_visible() {
                 window.present();
@@ -234,8 +226,8 @@ impl NotifyApplication {
         let response = ashpd::desktop::background::Background::request()
             .reason("Listen for coming notifications")
             .auto_start(true)
-            .command(&["notify", "--daemon"])
-            .dbus_activatable(false)
+            .command(&["notify", "--gapplication-service"])
+            .dbus_activatable(true)
             .send()
             .await?
             .response()?;
@@ -279,6 +271,7 @@ impl NotifyApplication {
                     }
                 }
 
+                info!(title = %n.title, "showing notification");
                 app.send_notification(None, &gio_notif);
             }
         });
@@ -323,15 +316,5 @@ impl NotifyApplication {
 
         let window = NotifyWindow::new(self, ntfy.clone());
         *self.imp().window.borrow_mut() = window.downgrade();
-    }
-}
-
-impl Default for NotifyApplication {
-    fn default() -> Self {
-        glib::Object::builder()
-            .property("application-id", APP_ID)
-            .property("flags", gio::ApplicationFlags::HANDLES_COMMAND_LINE)
-            .property("resource-base-path", "/com/ranfdev/Notify/")
-            .build()
     }
 }
