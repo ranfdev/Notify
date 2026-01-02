@@ -214,7 +214,7 @@ impl Subscription {
             .unwrap()
             .update_info(
                 models::Subscription::builder(self.topic())
-                    .display_name((imp.display_name.borrow().to_string()))
+                    .display_name(imp.display_name.borrow().to_string())
                     .muted(imp.muted.get())
                     .build()
                     .map_err(|e| anyhow::anyhow!("invalid subscription data {:?}", e))?,

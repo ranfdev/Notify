@@ -3,6 +3,7 @@ use std::cell::OnceCell;
 use adw::prelude::*;
 use adw::subclass::prelude::*;
 use gtk::{gio, glib};
+use tracing::debug;
 
 use crate::error::*;
 
@@ -14,6 +15,8 @@ mod imp {
     #[derive(gtk::CompositeTemplate)]
     #[template(resource = "/com/ranfdev/Notify/ui/preferences.ui")]
     pub struct NotifyPreferences {
+        #[template_child]
+        pub startup_switch: TemplateChild<adw::SwitchRow>,
         #[template_child]
         pub server_entry: TemplateChild<adw::EntryRow>,
         #[template_child]
@@ -32,6 +35,7 @@ mod imp {
     impl Default for NotifyPreferences {
         fn default() -> Self {
             let this = Self {
+                startup_switch: Default::default(),
                 server_entry: Default::default(),
                 username_entry: Default::default(),
                 password_entry: Default::default(),
@@ -60,11 +64,7 @@ mod imp {
         }
     }
 
-    impl ObjectImpl for NotifyPreferences {
-        fn dispose(&self) {
-            self.dispose_template();
-        }
-    }
+    impl ObjectImpl for NotifyPreferences {}
 
     impl WidgetImpl for NotifyPreferences {}
     impl AdwDialogImpl for NotifyPreferences {}
@@ -74,7 +74,7 @@ mod imp {
 glib::wrapper! {
     pub struct NotifyPreferences(ObjectSubclass<imp::NotifyPreferences>)
         @extends gtk::Widget, adw::Dialog, adw::PreferencesDialog,
-        @implements gio::ActionMap, gio::ActionGroup, gtk::Root;
+        @implements gio::ActionMap, gio::ActionGroup, gtk::Root, gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget, gtk::Native, gtk::ShortcutManager;
 }
 
 impl NotifyPreferences {
@@ -85,6 +85,49 @@ impl NotifyPreferences {
             .set(notifier)
             .map_err(|_| "notifier")
             .unwrap();
+
+        let settings = gio::Settings::new(crate::config::APP_ID);
+        settings
+            .bind("run-on-startup", &*obj.imp().startup_switch, "active")
+            .build();
+
+        settings.connect_changed(Some("run-on-startup"), move |settings, _| {
+            let enabled = settings.boolean("run-on-startup");
+            // Autostart Logic
+            let app_id = crate::config::APP_ID;
+            // Use home_dir() to escape Flatpak sandbox XDG_CONFIG_HOME
+            let autostart_dir = glib::home_dir().join(".config").join("autostart");
+            let desktop_path = autostart_dir.join(format!("{}.desktop", app_id));
+
+            if enabled {
+                if let Err(e) = std::fs::create_dir_all(&autostart_dir) {
+                    eprintln!("Failed to create autostart dir: {}", e);
+                    return;
+                }
+                let name = if app_id.ends_with("Devel") { "Notify (Dev)" } else { "Notify" };
+                
+                // Note: This assumes Flatpak environment mostly
+                let exec_cmd = format!("flatpak run {}", app_id);
+                let content = format!(
+                    "[Desktop Entry]\n\
+                     Type=Application\n\
+                     Name={}\n\
+                     Exec={}\n\
+                     Icon={}\n\
+                     X-GNOME-Autostart-enabled=true\n",
+                    name, exec_cmd, app_id
+                );
+                
+                if let Err(e) = std::fs::write(&desktop_path, content) {
+                     eprintln!("Failed to write autostart file: {}", e);
+                }
+            } else {
+                if desktop_path.exists() {
+                    let _ = std::fs::remove_file(desktop_path);
+                }
+            }
+        });
+
         let this = obj.clone();
         obj.imp().add_btn.connect_clicked(move |btn| {
             let this = this.clone();
@@ -100,12 +143,16 @@ impl NotifyPreferences {
     }
 
     pub async fn show_accounts(&self) -> anyhow::Result<()> {
+        debug!("show_accounts: starting");
         let imp = self.imp();
         let accounts = imp.notifier.get().unwrap().list_accounts().await?;
+        debug!("show_accounts: accounts found: {}", accounts.len());
 
         imp.added_accounts_group.set_visible(!accounts.is_empty());
 
-        imp.added_accounts.remove_all();
+        while let Some(child) = imp.added_accounts.last_child() {
+            imp.added_accounts.remove(&child);
+        }
         for a in accounts {
             let row = adw::ActionRow::builder()
                 .title(&a.server)

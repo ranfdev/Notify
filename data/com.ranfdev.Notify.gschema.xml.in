@@ -13,5 +13,9 @@
       <default>false</default>
       <summary>Window maximized state</summary>
     </key>
+    <key name="run-on-startup" type="b">
+      <default>true</default>
+      <summary>Run on startup</summary>
+    </key>
   </schema>
 </schemalist>

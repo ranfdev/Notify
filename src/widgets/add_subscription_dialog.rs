@@ -51,7 +51,7 @@ mod imp {
 glib::wrapper! {
     pub struct AddSubscriptionDialog(ObjectSubclass<imp::AddSubscriptionDialog>)
         @extends gtk::Widget, adw::Dialog,
-        @implements gio::ActionMap, gio::ActionGroup, gtk::Root;
+        @implements gio::ActionMap, gio::ActionGroup, gtk::Root, gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget, gtk::Native, gtk::ShortcutManager;
 }
 
 impl AddSubscriptionDialog {

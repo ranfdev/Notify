@@ -1,9 +1,10 @@
-use std::io::Read;
+
 
 use adw::prelude::*;
 use adw::subclass::prelude::*;
-use chrono::NaiveDateTime;
+
 use gtk::{gdk, gio, glib};
+use gdk_pixbuf;
 use ntfy_daemon::models;
 use tracing::error;
 
@@ -30,7 +31,8 @@ mod imp {
 
 glib::wrapper! {
     pub struct MessageRow(ObjectSubclass<imp::MessageRow>)
-        @extends gtk::Widget, gtk::Grid;
+        @extends gtk::Widget, gtk::Grid,
+        @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget, gtk::Orientable;
 }
 
 impl MessageRow {
@@ -50,7 +52,7 @@ impl MessageRow {
 
         let time = gtk::Label::builder()
             .label(
-                &NaiveDateTime::from_timestamp_opt(msg.time as i64, 0)
+                &chrono::DateTime::from_timestamp(msg.time as i64, 0)
                     .map(|time| time.format("%Y-%m-%d %H:%M:%S").to_string())
                     .unwrap_or_default(),
             )
@@ -127,7 +129,7 @@ impl MessageRow {
 
             for a in msg.actions {
                 let btn = self.build_action_btn(a);
-                action_btns.append(&btn);
+                action_btns.insert(&btn, -1);
             }
 
             self.attach(&action_btns, 0, row, 3, 1);
@@ -150,13 +152,10 @@ impl MessageRow {
         let bytes = if path.exists() {
             std::fs::read(&path)?
         } else {
-            let mut bytes = vec![];
-            ureq::get(&url)
+            ureq::get(url)
                 .call()?
-                .into_reader()
-                .take(5 * 1_000_000) // 5 MB
-                .read_to_end(&mut bytes)?;
-            bytes
+                .into_body()
+                .read_to_vec()?
         };
         Ok(bytes)
     }
@@ -164,7 +163,9 @@ impl MessageRow {
         let (s, r) = async_channel::unbounded();
         gio::spawn_blocking(move || {
             if let Err(e) = Self::fetch_image_bytes(&url).and_then(|bytes| {
-                let t = gdk::Texture::from_bytes(&glib::Bytes::from_owned(bytes))?;
+                let stream = gio::MemoryInputStream::from_bytes(&glib::Bytes::from(&bytes));
+                let pixbuf = gdk_pixbuf::Pixbuf::from_stream(&stream, gio::Cancellable::NONE)?;
+                let t = gdk::Texture::for_pixbuf(&pixbuf);
                 s.send_blocking(t)?;
                 Ok(())
             }) {

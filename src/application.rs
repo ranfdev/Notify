@@ -12,6 +12,7 @@ use tracing::{debug, error, info, warn};
 
 use crate::config::{APP_ID, PKGDATADIR, PROFILE, VERSION};
 use crate::widgets::*;
+use anyhow::Context;
 
 mod imp {
     use std::cell::RefCell;
@@ -55,6 +56,50 @@ mod imp {
             app.setup_css();
             app.setup_gactions();
             app.setup_accels();
+            // Karere-style background portal request at startup
+            std::thread::spawn(|| {
+                if let Ok(rt) = tokio::runtime::Builder::new_multi_thread().enable_all().build() {
+                    rt.block_on(async {
+                        debug!("Requesting background permission at startup...");
+                        match ashpd::desktop::background::Background::request()
+                            .reason("Notify needs to run in the background to receive notifications.")
+                            .auto_start(true)
+                            .send()
+                            .await
+                        {
+                            Ok(response) => {
+                                 info!("Background permission requested: {:?}", response.response());
+                                 
+                                 // Use zbus directly to call SetStatus
+                                 async fn set_status_msg() -> anyhow::Result<()> {
+                                     let connection = zbus::Connection::session().await?;
+                                     let proxy = zbus::Proxy::new(
+                                         &connection, 
+                                         "org.freedesktop.portal.Desktop", 
+                                         "/org/freedesktop/portal/desktop", 
+                                         "org.freedesktop.portal.Background"
+                                     ).await?;
+
+                                     let mut options = std::collections::HashMap::new();
+                                     options.insert("message", zbus::zvariant::Value::from("Running in background"));
+
+                                     proxy.call_method("SetStatus", &(options)).await?;
+                                     Ok(())
+                                 }
+
+                                 if let Err(e) = set_status_msg().await {
+                                     warn!("Failed to set background status: {}", e);
+                                 } else {
+                                     debug!("Background status set.");
+                                 }
+                            }
+                            Err(e) => {
+                                 warn!("Failed to request background permission: {}", e);
+                            }
+                        }
+                    });
+                }
+            });
         }
         fn command_line(&self, command_line: &gio::ApplicationCommandLine) -> glib::ExitCode {
             debug!("AdwApplication<NotifyApplication>::command_line");
@@ -66,10 +111,16 @@ mod imp {
                 app.ensure_rpc_running();
             }
 
-            glib::MainContext::default().spawn_local(async move {
-                if let Err(e) = super::NotifyApplication::run_in_background().await {
-                    warn!(error = %e, "couldn't request running in background from portal");
-                }
+            std::thread::spawn(move || {
+                let rt = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .unwrap();
+                rt.block_on(async move {
+                    if let Err(e) = super::NotifyApplication::run_in_background(None).await {
+                        warn!(error = %e, "couldn't request running in background from portal");
+                    }
+                });
             });
 
             if is_daemon {
@@ -88,7 +139,7 @@ mod imp {
 
 glib::wrapper! {
     pub struct NotifyApplication(ObjectSubclass<imp::NotifyApplication>)
-        @extends gio::Application, gtk::Application,
+        @extends gio::Application, gtk::Application, adw::Application,
         @implements gio::ActionMap, gio::ActionGroup;
 }
 
@@ -113,8 +164,12 @@ impl NotifyApplication {
         let action_quit = gio::ActionEntry::builder("quit")
             .activate(move |app: &Self, _, _| {
                 // This is needed to trigger the delete event and saving the window state
-                app.main_window().close();
+                if let Some(win) = app.imp().window.borrow().upgrade() {
+                    let _ = win.save_window_size();
+                    win.close();
+                }
                 app.quit();
+                std::process::exit(0);
             })
             .build();
 
@@ -173,11 +228,31 @@ impl NotifyApplication {
                 ..
             } => {
                 gio::spawn_blocking(move || {
-                    let mut req = ureq::request(method.as_str(), url.as_str());
-                    for (k, v) in headers.iter() {
-                        req = req.set(&k, &v);
+                    let agent = ureq::Agent::new_with_config(
+                        Default::default()
+                    );
+                    
+                    macro_rules! set_headers {
+                        ($req:expr) => {{
+                            let mut r = $req;
+                            for (k, v) in headers.iter() {
+                                r = r.header(k, v);
+                            }
+                            r
+                        }}
                     }
-                    let res = req.send(body.as_bytes());
+
+                   let res = match method.as_str() {
+                        "GET" => set_headers!(agent.get(url.as_str())).call(),
+                        "POST" => set_headers!(agent.post(url.as_str())).send(body.as_bytes()),
+                        "PUT" => set_headers!(agent.put(url.as_str())).send(body.as_bytes()),
+                        "DELETE" => set_headers!(agent.delete(url.as_str())).call(),
+                        "HEAD" => set_headers!(agent.head(url.as_str())).call(),
+                        "PATCH" => set_headers!(agent.patch(url.as_str())).send(body.as_bytes()),
+                        "OPTIONS" => set_headers!(agent.options(url.as_str())).call(),
+                        "TRACE" => set_headers!(agent.trace(url.as_str())).call(),
+                        _ => set_headers!(agent.get(url.as_str())).call(),
+                    };
                     match res {
                         Err(e) => {
                             error!(error = ?e, "Error sending request");
@@ -228,19 +303,86 @@ impl NotifyApplication {
     pub fn run(&self) -> glib::ExitCode {
         info!(app_id = %APP_ID, version = %VERSION, profile = %PROFILE, datadir = %PKGDATADIR, "running");
 
-        ApplicationExtManual::run(self)
+        glib::ExitCode::from(self.run_with_args(&std::env::args().collect::<Vec<_>>()))
     }
-    async fn run_in_background() -> ashpd::Result<()> {
-        let response = ashpd::desktop::background::Background::request()
-            .reason("Listen for coming notifications")
-            .auto_start(true)
-            .command(&["notify", "--daemon"])
-            .dbus_activatable(false)
-            .send()
-            .await?
-            .response()?;
+    
+    fn setup_autostart(&self) {
+        let settings = gio::Settings::new(crate::config::APP_ID);
+        
+        let app = self.clone();
+        settings.connect_changed(Some("run-on-startup"), move |_, _| {
+            debug!("Run on startup setting changed");
+            let app = app.clone();
+            
+            // We need to get the window from the main thread
+            let identifier = if let Some(win) = app.imp().window.borrow().upgrade() {
+                // from_native is async and needs a reactor. 
+                // We use a temporary runtime on the main thread here.
+                let rt = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .unwrap();
+                rt.block_on(async move {
+                    match ashpd::WindowIdentifier::from_native(&win).await {
+                        Some(id) => Some(id),
+                        None => {
+                            warn!("Failed to get window identifier");
+                            None
+                        }
+                    }
+                })
+            } else {
+                None
+            };
 
-        info!(auto_start = %response.auto_start(), run_in_background = %response.run_in_background());
+            // Run the portal request in a background thread to avoid blocking and provide a reactor for zbus
+            std::thread::spawn(move || {
+                let rt = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .unwrap();
+                rt.block_on(async move {
+                    info!("Calling run_in_background from background thread");
+                    if let Err(e) = Self::run_in_background(identifier).await {
+                         warn!("Failed to update autostart portal: {}", e);
+                    } else {
+                        info!("Autostart portal updated");
+                    }
+                });
+            });
+        });
+    }
+
+    fn update_autostart_file(&self, _enable: bool) -> std::io::Result<()> {
+        // Handled in preferences.rs to match Karere
+        Ok(())
+    }
+
+
+    async fn run_in_background(identifier: Option<ashpd::WindowIdentifier>) -> ashpd::Result<()> {
+        let settings = gio::Settings::new(APP_ID);
+        let autostart = settings.boolean("run-on-startup");
+        info!(autostart_request = autostart, "Initiating background portal request");
+
+        let request = ashpd::desktop::background::Background::request()
+            .reason("Receive notifications in the background")
+            .auto_start(autostart)
+            .command(&["notify", "--daemon"])
+            .dbus_activatable(false);
+        
+        let response = if let Some(id) = identifier {
+            info!("Using window identifier for portal request");
+            request.identifier(id).send().await?.response()?
+        } else {
+            info!("No window identifier available for portal request");
+            request.send().await?.response()?
+        };
+
+        warn!(
+            portal_auto_start = %response.auto_start(), 
+            portal_run_in_background = %response.run_in_background(),
+            "Portal background request result"
+        );
 
         Ok(())
     }

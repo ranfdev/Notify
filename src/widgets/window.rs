@@ -161,10 +161,6 @@ mod imp {
                 obj.add_css_class("devel");
             }
         }
-
-        fn dispose(&self) {
-            self.dispose_template();
-        }
     }
 
     impl WidgetImpl for NotifyWindow {}
@@ -186,8 +182,8 @@ mod imp {
 
 glib::wrapper! {
     pub struct NotifyWindow(ObjectSubclass<imp::NotifyWindow>)
-        @extends gtk::Widget, gtk::Window, adw::Window, adw::ApplicationWindow,
-        @implements gio::ActionMap, gio::ActionGroup, gtk::Root;
+        @extends gtk::Widget, gtk::Window, gtk::ApplicationWindow, adw::ApplicationWindow,
+        @implements gio::ActionMap, gio::ActionGroup, gtk::Root, gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget, gtk::Native, gtk::ShortcutManager;
 }
 
 impl NotifyWindow {
@@ -455,7 +451,7 @@ impl NotifyWindow {
         b
     }
 
-    fn save_window_size(&self) -> Result<(), glib::BoolError> {
+    pub fn save_window_size(&self) -> Result<(), glib::BoolError> {
         let imp = self.imp();
 
         let (width, height) = self.default_size();

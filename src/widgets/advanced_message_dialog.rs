@@ -30,7 +30,8 @@ mod imp {
 
 glib::wrapper! {
     pub struct AdvancedMessageDialog(ObjectSubclass<imp::AdvancedMessageDialog>)
-        @extends gtk::Widget, adw::Dialog;
+        @extends gtk::Widget, adw::Dialog,
+        @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget, gtk::Native, gtk::Root, gtk::ShortcutManager;
 }
 
 impl AdvancedMessageDialog {

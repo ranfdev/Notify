@@ -1,11 +1,10 @@
 {
     "id": "com.ranfdev.Notify.Devel",
     "runtime": "org.gnome.Platform",
-    "runtime-version": "47",
+    "runtime-version": "49",
     "sdk": "org.gnome.Sdk",
     "sdk-extensions": [
-        "org.freedesktop.Sdk.Extension.rust-stable",
-        "org.freedesktop.Sdk.Extension.llvm18"
+        "org.freedesktop.Sdk.Extension.rust-stable"
     ],
     "command": "notify",
     "finish-args": [
@@ -14,22 +13,20 @@
         "--socket=fallback-x11",
         "--socket=wayland",
         "--device=dri",
+        "--own-name=com.ranfdev.Notify.Devel",
         "--env=RUST_LOG=notify=debug,ntfy_daemon=debug",
         "--env=G_MESSAGES_DEBUG=none",
         "--env=RUST_BACKTRACE=1",
+        "--filesystem=xdg-config/autostart",
         "--talk-name=org.freedesktop.Notifications"
     ],
     "build-options": {
-        "append-path": "/usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/llvm18/bin",
+        "append-path": "/usr/lib/sdk/rust-stable/bin",
         "build-args": [
             "--share=network"
         ],
         "env": {
-            "CARGO_REGISTRIES_CRATES_IO_PROTOCOL": "sparse",
-            "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER": "clang",
-            "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS": "-C link-arg=-fuse-ld=/usr/lib/sdk/rust-stable/bin/mold",
-            "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER": "clang",
-            "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS": "-C link-arg=-fuse-ld=/usr/lib/sdk/rust-stable/bin/mold"
+            "CARGO_REGISTRIES_CRATES_IO_PROTOCOL": "sparse"
         },
         "test-args": [
             "--socket=x11",
@@ -37,19 +34,6 @@
         ]
     },
     "modules": [
-        {
-          "name": "blueprint-compiler",
-          "buildsystem": "meson",
-          "cleanup": ["*"],
-          "sources": [
-            {
-              "type": "git",
-              "url": "https://gitlab.gnome.org/jwestman/blueprint-compiler",
-              "tag": "v0.14.0",
-              "commit": "8e10fcf8692108b9d4ab78f41086c5d7773ef864"
-            }
-          ]
-        },
         {
             "name": "notify",
             "buildsystem": "meson",
