@@ -2,7 +2,7 @@ use std::io::Read;
 
 use adw::prelude::*;
 use adw::subclass::prelude::*;
-use chrono::NaiveDateTime;
+use chrono::{Local, TimeZone};
 use gtk::{gdk, gio, glib};
 use ntfy_daemon::models;
 use tracing::error;
@@ -50,7 +50,9 @@ impl MessageRow {
 
         let time = gtk::Label::builder()
             .label(
-                &NaiveDateTime::from_timestamp_opt(msg.time as i64, 0)
+                &Local
+                    .timestamp_opt(msg.time as i64, 0)
+                    .earliest()
                     .map(|time| time.format("%Y-%m-%d %H:%M:%S").to_string())
                     .unwrap_or_default(),
             )
