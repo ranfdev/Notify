@@ -316,7 +316,7 @@ impl NotifyWindow {
             });
 
         let this = self.clone();
-        imp.subscription_list.connect_row_selected(move |_, _row| {
+        imp.subscription_list.connect_row_activated(move |_, _row| {
             this.selected_subscription_changed(this.selected_subscription().as_ref());
         });
 

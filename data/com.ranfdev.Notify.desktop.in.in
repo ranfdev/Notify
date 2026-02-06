@@ -11,4 +11,4 @@ Keywords=Gnome;GTK;ntfy;
 Icon=@icon@
 StartupNotify=true
 X-GNOME-UsesNotifications=true
-X-Purism-FormFactor=Workstation;Mobile
+X-Purism-FormFactor=Workstation;Mobile;
