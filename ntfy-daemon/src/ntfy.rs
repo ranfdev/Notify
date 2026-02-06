@@ -10,6 +10,7 @@ use tokio::{
     sync::{broadcast, mpsc, oneshot, RwLock},
     task::{spawn_local, LocalSet},
 };
+use tracing::debug;
 use tracing::{error, info};
 
 use crate::{
@@ -225,6 +226,7 @@ impl NtfyActor {
     }
 
     async fn handle_watch_subscribed(&mut self) -> anyhow::Result<()> {
+        debug!("Watching previously subscribed topics, restoring all connections");
         let f: Vec<_> = self
             .env
             .db

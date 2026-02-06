@@ -34,6 +34,6 @@ jobs:
       with:
         bundle: notify.flatpak
         manifest-path: build-aux/com.ranfdev.Notify.Devel.json
-        repository-name: "flathub"
+        repository-name: "flathub-beta"
         run-tests: true
         cache-key: flatpak-builder-${{ github.sha }}

@@ -109,6 +109,8 @@ impl ListenerActor {
         let span = tracing::info_span!("listener_loop", topic = %self.config.topic);
         async {
             let mut commands_rx = self.commands_rx.take().unwrap();
+            // TODO: Fix
+            // Each time a ListenerCommand is received, the supervised loop will be dropped and a new one will be started.
             loop {
                 select! {
                     _ = self.run_supervised_loop() => {
@@ -191,6 +193,7 @@ impl ListenerActor {
     }
 
     async fn recv_and_forward_loop(&mut self) -> anyhow::Result<()> {
+        debug!("starting receive loop");
         let span = tracing::info_span!("receive_loop",
             endpoint = %self.config.endpoint,
             topic = %self.config.topic,
